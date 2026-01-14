@@ -1,0 +1,30 @@
+[tool.poetry]
+name = "mindmap-ai"
+version = "0.1.0"
+description = "A GraphRAG system that ingests academic PDF documents and constructs a Knowledge Graph in Neo4j"
+authors = ["Osman Yigit Sokel <oyigitsokell@gmail.com>"]
+packages = [{include = "backend"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+langchain-core = "*"
+langchain-groq = "*"
+langchain-community = "*"
+langchain-experimental = "*"
+neo4j = "^5.15.0"
+pypdf = "^3.17.0"
+python-dotenv = "^1.0.0"
+pydantic = "^2.5.0"
+loguru = "^0.7.2"
+fastapi = "^0.128.0"
+uvicorn = "^0.40.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.0"
+pytest-asyncio = "^0.21.0"
+black = "^23.11.0"
+ruff = "^0.1.6"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
