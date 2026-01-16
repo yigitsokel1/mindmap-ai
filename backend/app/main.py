@@ -7,6 +7,7 @@ database connections on startup/shutdown.
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.api.endpoints import router
 from backend.app.core.db import Neo4jDatabase
@@ -34,6 +35,15 @@ app = FastAPI(
     description="A GraphRAG system for ingesting academic PDFs and querying knowledge graphs",
     version="0.1.0",
     lifespan=lifespan
+)
+
+# Add CORS middleware to allow requests from frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Include API router with /api prefix

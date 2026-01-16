@@ -79,7 +79,23 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+# Next.js / Frontend
+.next/
+out/
+.vercel/
+node_modules/
+*.tsbuildinfo
+next-env.d.ts
+
+# Neo4j Database
+data/neo4j/
+logs/neo4j/
+
 # Project specific
 data/*.pdf
 !data/.gitkeep
 *.pdf.bak
+
+# OS
+Thumbs.db
+.DS_Store
