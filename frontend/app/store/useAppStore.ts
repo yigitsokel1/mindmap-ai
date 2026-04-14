@@ -1,4 +1,6 @@
 import { create } from "zustand";
+import { PRESET_FILTERS } from "../lib/constants";
+import type { GraphFilters, GraphPreset, NodeContext } from "../lib/types";
 
 interface AppState {
   // UI State
@@ -15,6 +17,10 @@ interface AppState {
   // Graph State
   highlightedNodeIds: string[];
   isGraphFocused: boolean; // For blur/dim effect when panels are open
+  graphPreset: GraphPreset;
+  selectedDocumentId: string | null;
+  graphFilters: GraphFilters;
+  selectedNodeContext: NodeContext | null;
   
   // Actions
   toggleCommandCenter: () => void;
@@ -24,6 +30,10 @@ interface AppState {
   setSelectedNode: (nodeId: string | null) => void;
   setHighlightedNodes: (nodeIds: string[]) => void;
   setGraphFocused: (focused: boolean) => void;
+  setGraphPreset: (preset: GraphPreset) => void;
+  setSelectedDocumentId: (documentId: string | null) => void;
+  updateGraphFilters: (filters: Partial<GraphFilters>) => void;
+  setSelectedNodeContext: (context: NodeContext | null) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -37,6 +47,10 @@ export const useAppStore = create<AppState>((set) => ({
   pdfPage: null,
   highlightedNodeIds: [],
   isGraphFocused: true,
+  graphPreset: "semantic",
+  selectedDocumentId: null,
+  graphFilters: { ...PRESET_FILTERS.semantic },
+  selectedNodeContext: null,
   
   // Actions
   toggleCommandCenter: () => set((state) => ({ isCommandCenterOpen: !state.isCommandCenterOpen })),
@@ -60,4 +74,28 @@ export const useAppStore = create<AppState>((set) => ({
   setSelectedNode: (nodeId: string | null) => set({ selectedNodeId: nodeId }),
   setHighlightedNodes: (nodeIds: string[]) => set({ highlightedNodeIds: nodeIds }),
   setGraphFocused: (focused: boolean) => set({ isGraphFocused: focused }),
+  setGraphPreset: (preset: GraphPreset) =>
+    set((state) => ({
+      graphPreset: preset,
+      graphFilters: {
+        ...PRESET_FILTERS[preset],
+        document_id: state.graphFilters.document_id,
+      },
+    })),
+  setSelectedDocumentId: (documentId: string | null) =>
+    set((state) => ({
+      selectedDocumentId: documentId,
+      graphFilters: {
+        ...state.graphFilters,
+        document_id: documentId || undefined,
+      },
+    })),
+  updateGraphFilters: (filters: Partial<GraphFilters>) =>
+    set((state) => ({
+      graphFilters: {
+        ...state.graphFilters,
+        ...filters,
+      },
+    })),
+  setSelectedNodeContext: (context: NodeContext | null) => set({ selectedNodeContext: context }),
 }));

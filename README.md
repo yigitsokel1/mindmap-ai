@@ -102,6 +102,13 @@ uvicorn backend.app.main:app --reload
 - semantic graph read = **new primary read path**
 - legacy chat/vector retrieval = **migration mode**
 
+### Frontend Migration Note (Sprint 9)
+
+- Frontend graph viewer now uses semantic `GET /api/graph` response contract (`nodes`, `edges`, `meta`).
+- Graph exploration includes preset modes: **Semantic**, **Evidence**, **Citation**.
+- Document-focused filtering is wired into graph fetch filters (`document_id`, include toggles).
+- Chat remains available in **legacy chat mode** while semantic chat migration is pending.
+
 ### 1. Ingest PDF
 
 Endpoint: `POST /api/ingest`  

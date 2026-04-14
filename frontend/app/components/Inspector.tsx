@@ -5,13 +5,21 @@ import { X, FileText } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
 
 export default function Inspector() {
-  const { isPDFViewerOpen, pdfUrl, pdfDocName, pdfPage, closePDFViewer } = useAppStore();
+  const {
+    isPDFViewerOpen,
+    pdfUrl,
+    pdfDocName,
+    pdfPage,
+    closePDFViewer,
+    selectedNodeContext,
+    setSelectedNodeContext,
+  } = useAppStore();
 
   const pdfUrlWithPage = pdfPage && pdfUrl ? `${pdfUrl}#page=${pdfPage}` : pdfUrl;
 
   return (
     <AnimatePresence>
-      {isPDFViewerOpen && (
+      {(isPDFViewerOpen || !!selectedNodeContext) && (
         <motion.div
           initial={{ x: "100%" }}
           animate={{ x: 0 }}
@@ -35,13 +43,31 @@ export default function Inspector() {
               </div>
             </div>
             <button
-              onClick={closePDFViewer}
+              onClick={() => {
+                closePDFViewer();
+                setSelectedNodeContext(null);
+              }}
               className="p-1.5 rounded-lg hover:bg-white/5 text-white/50 hover:text-white/90 transition-colors border border-transparent hover:border-white/10"
               title="Close"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
+
+          {selectedNodeContext && (
+            <div className="px-4 py-3 border-b border-white/10 bg-black/30">
+              <p className="text-[10px] text-cyan-300 uppercase font-mono tracking-wide">
+                {selectedNodeContext.label}
+              </p>
+              <p className="text-xs text-white/90 font-mono mt-1">{selectedNodeContext.title}</p>
+              {selectedNodeContext.documentName && (
+                <p className="text-[10px] text-white/60 font-mono mt-1">
+                  {selectedNodeContext.documentName}
+                  {selectedNodeContext.page ? ` · page ${selectedNodeContext.page}` : ""}
+                </p>
+              )}
+            </div>
+          )}
 
           {/* PDF Content */}
           <div className="flex-1 overflow-hidden bg-black/20 rounded-b-2xl">
@@ -51,6 +77,22 @@ export default function Inspector() {
                 className="w-full h-full border-0 rounded-b-2xl"
                 title={pdfDocName || "PDF Viewer"}
               />
+            ) : selectedNodeContext ? (
+              <div className="h-full overflow-y-auto p-4">
+                <p className="text-[10px] text-white/50 font-mono mb-2 uppercase tracking-wide">
+                  Node Details
+                </p>
+                {selectedNodeContext.rawText && (
+                  <p className="text-xs text-white/80 font-mono leading-relaxed mb-3">
+                    {selectedNodeContext.rawText}
+                  </p>
+                )}
+                {selectedNodeContext.details && (
+                  <pre className="text-[10px] text-white/60 font-mono whitespace-pre-wrap break-words">
+                    {JSON.stringify(selectedNodeContext.details, null, 2)}
+                  </pre>
+                )}
+              </div>
             ) : (
               <div className="h-full flex items-center justify-center">
                 <div className="text-center">

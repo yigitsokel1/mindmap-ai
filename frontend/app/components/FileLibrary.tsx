@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { FileText, Upload, Loader2 } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
 import { API_ENDPOINTS } from "../lib/constants";
+import { fetchSemanticGraph, getPresetFilters } from "../lib/api";
 import type { Document } from "../lib/types";
 
 export default function FileLibrary() {
@@ -11,28 +12,38 @@ export default function FileLibrary() {
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const { openPDFViewer } = useAppStore();
+  const { openPDFViewer, setSelectedDocumentId } = useAppStore();
 
   // Fetch documents from graph data
   useEffect(() => {
     const fetchDocuments = async () => {
       try {
         setIsLoading(true);
-        const response = await fetch(API_ENDPOINTS.GRAPH);
-        if (!response.ok) {
-          throw new Error("Failed to fetch graph data");
-        }
-        const data = await response.json();
+        const data = await fetchSemanticGraph(
+          getPresetFilters("semantic", {
+            node_types: ["Document"],
+            include_structural: true,
+            include_evidence: false,
+            include_citations: false,
+          })
+        );
         
         // Extract unique Document nodes
         const docMap = new Map<string, Document>();
         if (data.nodes) {
           data.nodes.forEach((node: any) => {
-            if (node.label === "Document" && node.id && node.name) {
+            if (node.label === "Document" && node.id) {
+              const fileName =
+                node.display_name ||
+                (node.properties?.file_name as string | undefined) ||
+                (node.properties?.title as string | undefined);
+
+              if (!fileName) return;
+
               if (!docMap.has(node.id)) {
                 docMap.set(node.id, {
                   id: node.id,
-                  name: node.name,
+                  name: fileName,
                 });
               }
             }
@@ -111,6 +122,7 @@ export default function FileLibrary() {
 
   const handleDocClick = (doc: Document) => {
     const pdfUrl = API_ENDPOINTS.STATIC(doc.name);
+    setSelectedDocumentId(doc.id);
     openPDFViewer(pdfUrl, doc.name, 1);
   };
 

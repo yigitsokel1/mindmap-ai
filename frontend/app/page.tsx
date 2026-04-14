@@ -8,14 +8,15 @@ import Inspector from "./components/Inspector";
 import StatusBar from "./components/StatusBar";
 import { useAppStore } from "./store/useAppStore";
 
-// Strict Client Separation: Import GraphViewer3D with SSR disabled
-const GraphViewer3D = dynamic(
-  () => import("./components/GraphViewer3D"),
+// Semantic-first graph viewer (SSR disabled for WebGL).
+const SemanticGraphViewer = dynamic(
+  () => import("./components/SemanticGraphViewer"),
   { ssr: false }
 );
 
 export default function Home() {
   const isPDFViewerOpen = useAppStore((state) => state.isPDFViewerOpen);
+  const selectedNodeContext = useAppStore((state) => state.selectedNodeContext);
   const isGraphFocused = useAppStore((state) => state.isGraphFocused);
   
   // Memoize blur classes to prevent re-renders
@@ -31,7 +32,7 @@ export default function Home() {
       <div
         className={`fixed inset-0 z-0 w-screen h-screen transition-all duration-500 ${graphBlurClass}`}
       >
-        <GraphViewer3D />
+        <SemanticGraphViewer />
       </div>
 
       {/* Spatial HUD Panels (Z-10+) */}
@@ -43,7 +44,7 @@ export default function Home() {
 
         {/* Inspector (Right Panel) */}
         <AnimatePresence>
-          {isPDFViewerOpen && (
+          {(isPDFViewerOpen || !!selectedNodeContext) && (
             <div className="pointer-events-auto">
               <Inspector />
             </div>

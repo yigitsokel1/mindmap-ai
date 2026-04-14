@@ -6,8 +6,8 @@ import { Send, Loader2, MessageSquare, FolderOpen, X } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
 import ChatBubble from "./ChatBubble";
 import FileLibrary from "./FileLibrary";
-import { API_ENDPOINTS } from "../lib/constants";
-import type { ChatMessage, ChatResponse } from "../lib/types";
+import { API_ENDPOINTS, PRESET_LABELS } from "../lib/constants";
+import type { ChatMessage, ChatResponse, GraphPreset } from "../lib/types";
 
 export default function CommandCenter() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -23,6 +23,12 @@ export default function CommandCenter() {
     toggleCommandCenter,
     setHighlightedNodes,
     openPDFViewer,
+    graphPreset,
+    setGraphPreset,
+    graphFilters,
+    updateGraphFilters,
+    selectedDocumentId,
+    setSelectedDocumentId,
   } = useAppStore();
 
   // Auto-scroll to bottom
@@ -114,6 +120,18 @@ export default function CommandCenter() {
     openPDFViewer(pdfUrl, docName, page);
   };
 
+  const handlePresetChange = (preset: GraphPreset) => {
+    setGraphPreset(preset);
+  };
+
+  const handleEvidenceToggle = (checked: boolean) => {
+    updateGraphFilters({ include_evidence: checked });
+  };
+
+  const handleCitationToggle = (checked: boolean) => {
+    updateGraphFilters({ include_citations: checked });
+  };
+
   return (
     <AnimatePresence mode="wait">
       {!isCommandCenterOpen ? (
@@ -184,12 +202,62 @@ export default function CommandCenter() {
 
       {/* Content */}
       <div className="flex-1 overflow-hidden flex flex-col">
+        <div className="p-3 border-b border-white/10 space-y-2">
+          <p className="text-[10px] font-mono uppercase tracking-wider text-white/60">
+            Graph Mode
+          </p>
+          <div className="grid grid-cols-3 gap-2">
+            {(["semantic", "evidence", "citation"] as GraphPreset[]).map((preset) => (
+              <button
+                key={preset}
+                onClick={() => handlePresetChange(preset)}
+                className={`px-2 py-1 rounded text-[10px] font-mono border transition-colors ${
+                  graphPreset === preset
+                    ? "border-cyan-400 text-cyan-300 bg-cyan-500/10"
+                    : "border-white/10 text-white/70 hover:bg-white/5"
+                }`}
+              >
+                {PRESET_LABELS[preset]}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center justify-between text-[10px] font-mono text-white/70">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={!!graphFilters.include_evidence}
+                onChange={(e) => handleEvidenceToggle(e.target.checked)}
+              />
+              Evidence
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={!!graphFilters.include_citations}
+                onChange={(e) => handleCitationToggle(e.target.checked)}
+              />
+              Citations
+            </label>
+          </div>
+          <div className="flex items-center justify-between text-[10px] font-mono text-white/60">
+            <span>Document Filter: {selectedDocumentId ? "Active" : "All Documents"}</span>
+            {selectedDocumentId && (
+              <button
+                onClick={() => setSelectedDocumentId(null)}
+                className="px-2 py-1 rounded border border-white/10 hover:bg-white/5"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
         {activeTab === "chat" ? (
           <>
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
               {messages.length === 0 && (
                 <div className="text-center py-8">
+                  <p className="text-xs text-amber-300/80 font-mono mb-2">LEGACY CHAT MODE</p>
                   <p className="text-xs text-white/50 font-mono">INITIALIZE QUERY</p>
                 </div>
               )}
