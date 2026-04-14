@@ -4,10 +4,13 @@ This module initializes the FastAPI app, includes routers, and manages
 database connections on startup/shutdown.
 """
 
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from backend.app.api.endpoints import router
 from backend.app.core.db import Neo4jDatabase
@@ -48,6 +51,14 @@ app.add_middleware(
 
 # Include API router with /api prefix
 app.include_router(router, prefix="/api")
+
+# Create uploaded_docs directory if it doesn't exist
+UPLOADED_DOCS_DIR = Path(__file__).parent.parent.parent / "uploaded_docs"
+UPLOADED_DOCS_DIR.mkdir(exist_ok=True)
+
+# Mount static files for PDF access
+# This allows frontend to access PDFs via http://localhost:8000/static/filename.pdf
+app.mount("/static", StaticFiles(directory=str(UPLOADED_DOCS_DIR)), name="static")
 
 
 @app.get("/")

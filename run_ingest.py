@@ -35,14 +35,19 @@ def main():
         # This will connect to Neo4j and initialize all components
         service = IngestionService()
         
-        # Process the PDF
-        result = service.process_pdf(str(pdf_path))
+        # Extract file name from path
+        file_name = pdf_path.name
+        
+        # Ingest the PDF
+        result = service.ingest_pdf(str(pdf_path), file_name)
         
         # Print results
-        print(f"\nProcessing completed successfully!")
-        print(f"Nodes created: {result['nodes']}")
-        print(f"Relationships created: {result['relationships']}")
-        print("\nSuccess! Graph created.")
+        print(f"\n✅ Ingestion completed successfully!")
+        print(f"📄 Document ID: {result['doc_id']}")
+        print(f"📝 File Name: {result['file_name']}")
+        print(f"🔢 Chunks created: {result['chunk_count']}")
+        print(f"📊 Status: {result['status']}")
+        print("\n✨ Success! Document and chunks stored in Neo4j.")
         
         # Cleanup
         service.close()

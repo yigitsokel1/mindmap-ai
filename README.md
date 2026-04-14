@@ -17,10 +17,11 @@ Sistem **Clean Architecture** prensiplerine göre modüler olarak tasarlanmışt
 
 ### 1. Ingestion Engine (Veri İşleme)
 
-- **PDF Parsing:** `PyPDFLoader` ile ham metin çıkarımı  
-- **Smart Chunking:** `RecursiveCharacterTextSplitter` ile bağlamı koruyan parçalama  
-- **Graph Extraction:** `LangChain Experimental (LLMGraphTransformer)` ve **Llama-3-70b** kullanılarak Node (Varlık) ve Relationship (İlişki) çıkarımı  
-- **Strict Schema:** Halüsinasyonu önlemek için katı şema zorlaması (`Paper`, `Author`, `Concept`, `Institution`)
+- **PDF Parsing:** `PyPDFLoader` ile sayfa sayfa ham metin çıkarımı (metadata korunur)  
+- **Smart Chunking:** `RecursiveCharacterTextSplitter` ile bağlamı koruyan parçalama (chunk_size=1000, overlap=200)  
+- **Embedding Generation:** OpenAI `text-embedding-3-small` ile her chunk için vektör oluşturma  
+- **Hierarchical Storage:** Neo4j'de `Document` → `Chunk` hiyerarşik yapısı (`BELONGS_TO` ilişkisi)  
+- **Batch Processing:** UNWIND ile toplu insert işlemleri (performans optimizasyonu)
 
 ### 2. Knowledge Store (Veri Depolama)
 
@@ -39,7 +40,8 @@ Sistem **Clean Architecture** prensiplerine göre modüler olarak tasarlanmışt
 
 | Component | Technology | Description |
 |---------|------------|-------------|
-| **LLM** | Llama-3.3-70b (Groq) | Yüksek hızlı çıkarım ve JSON modu desteği |
+| **LLM (Chat)** | Llama-3.3-70b (Groq) | Yüksek hızlı çıkarım ve JSON modu desteği |
+| **Embeddings** | OpenAI text-embedding-3-small | Chunk'lar için vektör oluşturma |
 | **Backend Framework** | FastAPI | Asenkron API yönetimi |
 | **Orchestration** | LangChain | LLM zincirleri ve Graph transformasyonları |
 | **Database** | Neo4j | Graph veritabanı (AuraDB veya Local) |
@@ -51,7 +53,8 @@ Sistem **Clean Architecture** prensiplerine göre modüler olarak tasarlanmışt
 
 - Python 3.10+  
 - Neo4j Database (URI, Username, Password)  
-- Groq API Key  
+- Groq API Key (for LLM/chat)  
+- OpenAI API Key (for embeddings)  
 
 ### 1. Clone & Install
 
@@ -64,25 +67,30 @@ poetry shell
 
 ### 2. Environment Configuration
 
-Create a `.env` file in the root directory:
+Copy the example environment file and fill in your values:
 
-```env
-GROQ_API_KEY=gsk_...
-NEO4J_URI=bolt://localhost:7687
-NEO4J_USERNAME=neo4j
-NEO4J_PASSWORD=your_password
+```bash
+cp env.example .env
 ```
 
-## 2. Environment Configuration
+Edit `.env` file with your actual credentials:
 
-Create a `.env` file in the root directory:
+```env
+# Neo4j Configuration
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USERNAME=neo4j
+NEO4J_PASSWORD=your_neo4j_password
 
-GROQ_API_KEY=gsk_...  
-NEO4J_URI=bolt://localhost:7687  
-NEO4J_USERNAME=neo4j  
-NEO4J_PASSWORD=your_password  
+# API Keys
+GROQ_API_KEY=gsk_your_groq_api_key
+OPENAI_API_KEY=sk-your_openai_api_key
+```
 
-## 3. Run the API
+**Get your API keys:**
+- Groq API Key: https://console.groq.com/
+- OpenAI API Key: https://platform.openai.com/api-keys
+
+### 3. Run the API
 
 uvicorn backend.app.main:app --reload
 
@@ -91,8 +99,23 @@ uvicorn backend.app.main:app --reload
 ### 1. Ingest PDF (Process Document)
 
 Endpoint: POST /api/ingest  
-Body: { "file_path": "data/attention-is-all-you-need.pdf" }  
-Process: Parses PDF → Extracts Entities → Writes to Neo4j (Background Task)
+Body: 
+```json
+{
+  "file_path": "data/attention-is-all-you-need-paper.pdf",
+  "file_name": "attention-is-all-you-need-paper.pdf"  // optional
+}
+```
+
+Process: 
+- Parses PDF page-by-page (preserves page metadata)
+- Splits into chunks (1000 chars, 200 overlap)
+- Generates embeddings for each chunk
+- Creates Document and Chunk nodes in Neo4j
+- Links chunks to document via BELONGS_TO relationship
+- Returns: `{ "doc_id": "...", "chunk_count": 123, "status": "success" }`
+
+**Note:** Processing runs as a background task. Check logs for progress.
 
 ### 2. Chat with Graph
 
@@ -102,19 +125,54 @@ Process: Converts Question to Cypher → Retrieves Neighborhood → Generates An
 
 ## 📊 Graph Schema (Ontology)
 
-The system enforces the following structure defined in docs/graph_schema.md:
+### Ingestion Schema (Document Storage)
 
-### Nodes
+The ingestion system creates a hierarchical structure:
 
-- Paper: The research document  
-- Author: Researchers  
-- Concept: Technical terms (e.g., "Self-Attention")  
-- Institution: Affiliations  
+**Nodes:**
+- `Document`: Represents a PDF file
+  - Properties: `id` (UUID), `name`, `created_at` (timestamp)
+- `Chunk`: Represents a text chunk from the document
+  - Properties: `id` (UUID), `text`, `page` (int), `source`, `embedding` (List[Float])
 
-### Relationships
+**Relationships:**
+- `(:Chunk)-[:BELONGS_TO]->(:Document)`
 
-- (:Author)-[:AUTHORED]->(:Paper)  
-- (:Paper)-[:MENTIONS]->(:Concept)  
-- (:Author)-[:AFFILIATED_WITH]->(:Institution)  
+### Query Schema (Knowledge Graph)
+
+For advanced querying, the system can extract knowledge graphs with the following structure (defined in `docs/graph_schema.md`):
+
+**Nodes:**
+- `Paper`: The research document  
+- `Author`: Researchers  
+- `Concept`: Technical terms (e.g., "Self-Attention")  
+- `Institution`: Affiliations  
+
+**Relationships:**
+- `(:Author)-[:AUTHORED]->(:Paper)`  
+- `(:Paper)-[:MENTIONS]->(:Concept)`  
+- `(:Author)-[:AFFILIATED_WITH]->(:Institution)`  
+
+---
+
+## 🛠 Development
+
+### Manual Ingestion Script
+
+You can also run ingestion manually:
+
+```bash
+python run_ingest.py
+```
+
+Edit `PDF_PATH` in the script to process different files.
+
+### Query Testing
+
+Test queries interactively:
+
+```bash
+python run_query.py
+```
 
 ---

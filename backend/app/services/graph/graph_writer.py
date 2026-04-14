@@ -1,0 +1,412 @@
+"""Graph writer for persisting extraction results to Neo4j.
+
+V2 (Sprint 3): Writes typed entity nodes, reified RelationInstance
+nodes, Evidence nodes, and structural Document/Passage nodes.
+
+Graph pattern for provenance:
+    (source:Entity)-[:OUT_REL]->(ri:RelationInstance)-[:TO]->(target:Entity)
+    (e:Evidence)-[:SUPPORTS]->(ri:RelationInstance)
+    (e:Evidence)-[:FROM_PASSAGE]->(p:Passage)
+"""
+
+import logging
+from datetime import datetime, timezone
+
+from backend.app.core.db import Neo4jDatabase
+from backend.app.domain.identity import build_entity_uid, build_relation_instance_uid
+from backend.app.schemas.citation import CitationLinkRecord, InlineCitationRecord
+from backend.app.schemas.document_structure import ReferenceRecord, SectionRecord
+from backend.app.schemas.extraction import ExtractionResult
+from backend.app.schemas.passage import PassageRecord
+
+logger = logging.getLogger(__name__)
+
+ENTITY_LABELS = {
+    "Concept", "Method", "Dataset", "Metric", "Task", "Author", "Institution",
+}
+
+
+class GraphWriter:
+    """Writes normalized extraction results to Neo4j with provenance."""
+
+    def __init__(self):
+        self.db = Neo4jDatabase()
+
+    def write(
+        self,
+        extraction: ExtractionResult,
+        passage: PassageRecord,
+        document_metadata: dict | None = None,
+        citation_metadata: dict | None = None,
+    ) -> dict:
+        """Write extraction results to Neo4j.
+
+        Creates/merges: Document, Passage, typed entity nodes,
+        RelationInstance nodes, Evidence nodes, and all connecting edges.
+
+        Args:
+            extraction: Validated and normalized extraction result.
+            passage: PassageRecord with structural metadata.
+            document_metadata: Optional dict with title, file_name, file_hash, saved_file_name.
+
+        Returns:
+            dict with counts of entities, relations, and evidence written.
+        """
+        entity_count = 0
+        relation_count = 0
+        evidence_count = 0
+
+        with self.db.driver.session() as session:
+            # --- Structural writes ---
+            self._ensure_document(session, passage.document_id, document_metadata)
+            self._ensure_passage(session, passage)
+
+            # --- Semantic entity writes ---
+            for entity in extraction.entities:
+                if entity.type not in ENTITY_LABELS:
+                    continue
+                canonical = entity.canonical_name or entity.name
+                uid = build_entity_uid(entity.type, canonical)
+                self._write_entity(session, entity, uid)
+                entity_count += 1
+
+            # --- Relation + Evidence writes ---
+            for rel in extraction.relations:
+                source_uid = build_entity_uid(
+                    self._find_entity_type(extraction, rel.source), rel.source
+                )
+                target_uid = build_entity_uid(
+                    self._find_entity_type(extraction, rel.target), rel.target
+                )
+
+                ri_uid = build_relation_instance_uid(rel.type, source_uid, target_uid)
+                ev_uid = f"ev:{ri_uid}:{passage.passage_id}"
+
+                wrote_ri = self._write_relation_instance(
+                    session, ri_uid, rel, source_uid, target_uid
+                )
+                if wrote_ri:
+                    relation_count += 1
+                    self._write_evidence(
+                        session,
+                        ev_uid,
+                        ri_uid,
+                        passage,
+                        rel.confidence,
+                        citation_metadata=citation_metadata,
+                    )
+                    evidence_count += 1
+
+        logger.info(
+            "Wrote %d entities, %d relations, %d evidence for passage %s",
+            entity_count, relation_count, evidence_count, passage.passage_id,
+        )
+        return {
+            "entities_written": entity_count,
+            "relations_written": relation_count,
+            "evidence_written": evidence_count,
+        }
+
+    # --- Private methods ---
+
+    def _ensure_document(self, session, document_id: str, metadata: dict | None = None):
+        """MERGE a Document node with optional metadata."""
+        params = {"uid": document_id, "now": _now_iso()}
+        set_clauses = ["d.created_at = $now"]
+
+        if metadata:
+            for key in ("title", "file_name", "file_hash", "saved_file_name"):
+                if key in metadata:
+                    params[key] = metadata[key]
+                    set_clauses.append(f"d.{key} = ${key}")
+
+        on_create = ", ".join(set_clauses)
+        session.run(
+            f"MERGE (d:Document {{uid: $uid}}) "
+            f"ON CREATE SET {on_create}",
+            params,
+        )
+
+    def _ensure_passage(self, session, passage: PassageRecord):
+        """MERGE a Passage node and link to Document and optionally Section."""
+        session.run(
+            "MERGE (p:Passage {uid: $uid}) "
+            "ON CREATE SET p.text = $text, p.index = $index, "
+            "             p.page_number = $page_number, "
+            "             p.section_title = $section_title, "
+            "             p.content_type = $content_type, "
+            "             p.extraction_status = 'completed' "
+            "WITH p "
+            "MATCH (d:Document {uid: $doc_uid}) "
+            "MERGE (d)-[:HAS_PASSAGE {ordinal: $index}]->(p)",
+            {
+                "uid": passage.passage_id,
+                "text": passage.text,
+                "index": passage.index,
+                "page_number": passage.page_number,
+                "section_title": passage.section_title,
+                "content_type": getattr(passage, "content_type", "body"),
+                "doc_uid": passage.document_id,
+            },
+        )
+
+        # Link to Section if section_id is available
+        section_id = getattr(passage, "section_id", None)
+        if section_id:
+            session.run(
+                "MATCH (s:Section {uid: $section_uid}) "
+                "MATCH (p:Passage {uid: $passage_uid}) "
+                "MERGE (s)-[:HAS_PASSAGE {ordinal: $index}]->(p)",
+                {
+                    "section_uid": section_id,
+                    "passage_uid": passage.passage_id,
+                    "index": passage.index,
+                },
+            )
+
+    def _write_entity(self, session, entity, uid: str):
+        """MERGE a typed entity node by UID."""
+        label = entity.type
+        aliases = entity.aliases or []
+
+        session.run(
+            f"MERGE (e:{label} {{uid: $uid}}) "
+            f"ON CREATE SET e.canonical_name = $canonical, "
+            f"             e.name = $name, "
+            f"             e.aliases = $aliases, "
+            f"             e.confidence = $confidence, "
+            f"             e.created_at = $now "
+            f"ON MATCH SET e.aliases = "
+            f"  [x IN e.aliases + $aliases WHERE x IS NOT NULL | x]",
+            {
+                "uid": uid,
+                "canonical": entity.canonical_name or entity.name,
+                "name": entity.name,
+                "aliases": aliases,
+                "confidence": entity.confidence,
+                "now": _now_iso(),
+            },
+        )
+
+    def _write_relation_instance(
+        self, session, ri_uid: str, rel, source_uid: str, target_uid: str
+    ) -> bool:
+        """Create a RelationInstance node and connect source → ri → target.
+
+        Returns True if the relation was created, False if source/target
+        nodes were not found.
+        """
+        result = session.run(
+            "MATCH (a {uid: $source_uid}) "
+            "MATCH (b {uid: $target_uid}) "
+            "MERGE (ri:RelationInstance {uid: $ri_uid}) "
+            "ON CREATE SET ri.type = $rel_type, "
+            "              ri.source_uid = $source_uid, "
+            "              ri.target_uid = $target_uid, "
+            "              ri.confidence = $confidence, "
+            "              ri.created_at = $now "
+            "MERGE (a)-[:OUT_REL]->(ri) "
+            "MERGE (ri)-[:TO]->(b) "
+            "RETURN ri.uid AS uid",
+            {
+                "source_uid": source_uid,
+                "target_uid": target_uid,
+                "ri_uid": ri_uid,
+                "rel_type": rel.type,
+                "confidence": rel.confidence,
+                "now": _now_iso(),
+            },
+        )
+        record = result.single()
+        if not record:
+            logger.warning(
+                "RelationInstance not created: %s -> %s (nodes not found: %s, %s)",
+                rel.source, rel.target, source_uid, target_uid,
+            )
+            return False
+        return True
+
+    def _write_evidence(
+        self, session, ev_uid: str, ri_uid: str,
+        passage: PassageRecord, confidence: float,
+        citation_metadata: dict | None = None,
+    ):
+        """Create an Evidence node linked to RelationInstance and Passage."""
+        citation_count = 0
+        citation_labels: list[str] = []
+        if citation_metadata:
+            citation_count = int(citation_metadata.get("citation_count", 0))
+            citation_labels = citation_metadata.get("citation_labels", [])
+        session.run(
+            "MATCH (ri:RelationInstance {uid: $ri_uid}) "
+            "MATCH (p:Passage {uid: $pass_uid}) "
+            "MERGE (e:Evidence {uid: $ev_uid}) "
+            "ON CREATE SET e.confidence = $confidence, "
+            "              e.extractor = $extractor, "
+            "              e.page_number = $page_number, "
+            "              e.passage_uid = $pass_uid, "
+            "              e.citation_count = $citation_count, "
+            "              e.citation_labels = $citation_labels, "
+            "              e.created_at = $now "
+            "ON MATCH SET e.citation_count = $citation_count, "
+            "             e.citation_labels = $citation_labels "
+            "MERGE (e)-[:SUPPORTS]->(ri) "
+            "MERGE (e)-[:FROM_PASSAGE]->(p)",
+            {
+                "ri_uid": ri_uid,
+                "pass_uid": passage.passage_id,
+                "ev_uid": ev_uid,
+                "confidence": confidence,
+                "extractor": "llm_gpt4.1",
+                "page_number": passage.page_number,
+                "citation_count": citation_count,
+                "citation_labels": citation_labels,
+                "now": _now_iso(),
+            },
+        )
+
+    def write_sections(self, sections: list[SectionRecord], document_id: str):
+        """Write Section nodes and link to Document."""
+        with self.db.driver.session() as session:
+            for section in sections:
+                self._ensure_section(session, section, document_id)
+
+        logger.info(
+            "Wrote %d sections for document %s",
+            len(sections),
+            document_id,
+        )
+
+    def write_references(self, references: list[ReferenceRecord], document_id: str):
+        """Write ReferenceEntry nodes and link to Document."""
+        with self.db.driver.session() as session:
+            for ref in references:
+                session.run(
+                    "MERGE (r:ReferenceEntry {uid: $uid}) "
+                    "ON CREATE SET r.raw_text = $raw_text, "
+                    "             r.order = $order, "
+                    "             r.year = $year, "
+                    "             r.title_guess = $title_guess, "
+                    "             r.authors_guess = $authors_guess, "
+                    "             r.citation_key_numeric = $citation_key_numeric, "
+                    "             r.citation_key_author_year = $citation_key_author_year, "
+                    "             r.created_at = $now "
+                    "ON MATCH SET r.raw_text = $raw_text, "
+                    "             r.year = $year, "
+                    "             r.title_guess = $title_guess, "
+                    "             r.authors_guess = $authors_guess, "
+                    "             r.citation_key_numeric = $citation_key_numeric, "
+                    "             r.citation_key_author_year = $citation_key_author_year "
+                    "WITH r "
+                    "MATCH (d:Document {uid: $doc_uid}) "
+                    "MERGE (d)-[:HAS_REFERENCE {order: $order}]->(r)",
+                    {
+                        "uid": ref.reference_id,
+                        "raw_text": ref.raw_text,
+                        "order": ref.order,
+                        "year": ref.year,
+                        "title_guess": ref.title_guess,
+                        "authors_guess": ref.authors_guess,
+                        "citation_key_numeric": ref.citation_key_numeric,
+                        "citation_key_author_year": ref.citation_key_author_year,
+                        "doc_uid": document_id,
+                        "now": _now_iso(),
+                    },
+                )
+
+        logger.info(
+            "Wrote %d references for document %s",
+            len(references),
+            document_id,
+        )
+
+    def write_inline_citations(
+        self,
+        citations: list[InlineCitationRecord],
+        citation_links: list[CitationLinkRecord],
+    ):
+        """Write InlineCitation nodes and structural citation edges."""
+        with self.db.driver.session() as session:
+            for citation in citations:
+                session.run(
+                    "MERGE (c:InlineCitation {uid: $uid}) "
+                    "ON CREATE SET c.raw_text = $raw_text, "
+                    "             c.citation_style = $citation_style, "
+                    "             c.start_char = $start_char, "
+                    "             c.end_char = $end_char, "
+                    "             c.page_number = $page_number, "
+                    "             c.reference_keys = $reference_keys, "
+                    "             c.reference_labels = $reference_labels, "
+                    "             c.created_at = $now "
+                    "ON MATCH SET c.raw_text = $raw_text, "
+                    "             c.citation_style = $citation_style, "
+                    "             c.start_char = $start_char, "
+                    "             c.end_char = $end_char, "
+                    "             c.page_number = $page_number, "
+                    "             c.reference_keys = $reference_keys, "
+                    "             c.reference_labels = $reference_labels "
+                    "WITH c "
+                    "MATCH (p:Passage {uid: $passage_uid}) "
+                    "MERGE (p)-[:HAS_INLINE_CITATION]->(c)",
+                    {
+                        "uid": citation.citation_id,
+                        "raw_text": citation.raw_text,
+                        "citation_style": citation.citation_style,
+                        "start_char": citation.start_char,
+                        "end_char": citation.end_char,
+                        "page_number": citation.page_number,
+                        "reference_keys": citation.reference_keys or [],
+                        "reference_labels": citation.reference_labels or [],
+                        "passage_uid": citation.passage_id,
+                        "now": _now_iso(),
+                    },
+                )
+
+            for link in citation_links:
+                session.run(
+                    "MATCH (c:InlineCitation {uid: $citation_uid}) "
+                    "MATCH (r:ReferenceEntry {uid: $reference_uid}) "
+                    "MERGE (c)-[rel:REFERS_TO]->(r) "
+                    "SET rel.confidence = $confidence",
+                    {
+                        "citation_uid": link.inline_citation_id,
+                        "reference_uid": link.reference_entry_id,
+                        "confidence": link.confidence,
+                    },
+                )
+
+    def _ensure_section(self, session, section: SectionRecord, document_id: str):
+        """MERGE a Section node and link to Document."""
+        session.run(
+            "MERGE (s:Section {uid: $uid}) "
+            "ON CREATE SET s.title = $title, s.ordinal = $ordinal, "
+            "             s.level = $level, "
+            "             s.page_start = $page_start, "
+            "             s.page_end = $page_end, "
+            "             s.created_at = $now "
+            "WITH s "
+            "MATCH (d:Document {uid: $doc_uid}) "
+            "MERGE (d)-[:HAS_SECTION {ordinal: $ordinal}]->(s)",
+            {
+                "uid": section.section_id,
+                "title": section.title,
+                "ordinal": section.ordinal,
+                "level": section.level,
+                "page_start": section.page_start,
+                "page_end": section.page_end,
+                "doc_uid": document_id,
+                "now": _now_iso(),
+            },
+        )
+
+    def _find_entity_type(self, extraction: ExtractionResult, canonical_name: str) -> str:
+        """Find entity type by canonical_name in the extraction."""
+        for entity in extraction.entities:
+            c = entity.canonical_name or entity.name
+            if c == canonical_name:
+                return entity.type
+        return "Concept"  # fallback
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
