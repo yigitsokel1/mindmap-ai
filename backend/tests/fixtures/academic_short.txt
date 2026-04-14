@@ -1,0 +1,6 @@
+Abstract
+We introduce a compact benchmark for citation-aware semantic extraction.
+
+Introduction
+Our method uses a Transformer encoder and evaluates it on WikiText.
+Results indicate robust concept linking for graph ingestion.

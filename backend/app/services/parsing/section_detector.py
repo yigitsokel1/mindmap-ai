@@ -56,7 +56,7 @@ _heading_alt = "|".join(re.escape(h) for h in KNOWN_HEADINGS)
 # Pattern: optional numbering (e.g., "3.", "3.1", "A.") followed by heading text
 # Matches at line start, allows trailing whitespace
 SECTION_PATTERN = re.compile(
-    rf"^(\d+\.?\d*\.?\s+|[A-Z]\.?\s+)?({_heading_alt})\s*$",
+    rf"^(\d+\.?\d*\.?\s+|[A-Z]\.?\s+|[IVXLCDM]+\s+)?({_heading_alt})\s*$",
     re.MULTILINE | re.IGNORECASE,
 )
 

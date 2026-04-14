@@ -140,6 +140,27 @@ Deprecated/historical schema docs remain under `docs/deprecated/`.
 
 ## 🛠 Development
 
+### Testing and Quality Gates
+
+Backend regression checks introduced in Sprint 8:
+
+- Unit tests for identity and normalization logic
+- Unit tests for section/reference/inline-citation/document parsing
+- Unit tests for semantic graph response shaping
+- Integration contract tests for `/api/extract` and `/api/graph/semantic`
+
+Run locally:
+
+```bash
+poetry run pytest backend/tests
+poetry run python -m compileall backend/app
+```
+
+Semantic graph endpoint contract checks now include:
+
+- Empty graph response shape (`nodes`, `edges`, `meta`)
+- `node_types` query parsing for both CSV and repeated parameter forms
+
 ### Manual Ingestion Script
 
 You can also run ingestion manually:

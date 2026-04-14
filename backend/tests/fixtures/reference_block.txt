@@ -1,0 +1,4 @@
+References
+[1] Vaswani, A. et al. Attention Is All You Need. NeurIPS. 2017.
+[2] Smith, J. Robust Evaluation in NLP. ACL. 2020.
+[3] Doe, J. Citation Parsing in Practice. EMNLP. 2021.

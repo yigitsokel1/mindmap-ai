@@ -1,0 +1,3 @@
+Our approach outperforms prior work [1].
+It also improves stability [2,5,8].
+Range-based references are common [3-6].

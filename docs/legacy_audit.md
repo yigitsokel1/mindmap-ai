@@ -472,6 +472,21 @@ Runtime truth table after Sprint 7:
 
 ---
 
+## Sprint 8 Status Update
+
+As of Sprint 8, backend quality gates and test coverage were expanded for semantic KG critical paths:
+
+- `backend/tests/unit/` now covers identity UIDs, entity/relation normalization, section/reference/inline-citation/document parsing, and semantic graph reader shaping.
+- `backend/tests/integration/` now includes contract tests for:
+  - `POST /api/extract` diagnostics response
+  - `GET /api/graph/semantic` empty graph contract and `node_types` parsing (CSV + repeated params)
+- `backend/tests/fixtures/` includes compact academic/parsing/citation/reference samples for deterministic tests.
+- Local baseline quality gate commands are standardized:
+  - `poetry run pytest backend/tests`
+  - `poetry run python -m compileall backend/app`
+
+---
+
 ## Summary Table
 
 | File | Status | Priority | Sprint |

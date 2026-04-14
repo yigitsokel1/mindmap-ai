@@ -1,0 +1,2 @@
+The architecture follows prior findings (Vaswani et al., 2017).
+Benchmark choices are aligned with established work (Smith, 2020; Doe, 2021).
