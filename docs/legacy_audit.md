@@ -451,15 +451,37 @@ As of Sprint 4, the semantic ingestion path is **primary**:
 
 ---
 
+## Sprint 7 Status Update
+
+As of Sprint 7, read paths are explicitly separated:
+
+- `GET /api/graph` is now semantic default read path.
+- `GET /api/graph/semantic` is available as explicit semantic endpoint.
+- `GET /api/graph/legacy` keeps legacy Document/Chunk visualization behavior.
+- Semantic graph response contract is standardized in `backend/app/schemas/graph_response.py`.
+- `POST /api/chat` is explicitly marked as legacy retrieval path (semantic chat pending).
+- Legacy retrieval is namespaced under `backend/app/services/legacy/`.
+
+Runtime truth table after Sprint 7:
+
+| Capability | Primary Path | Migration/Fallback Path |
+|------------|--------------|-------------------------|
+| Ingestion | `POST /api/ingest?mode=semantic` | `POST /api/ingest?mode=legacy` |
+| Graph Read | `GET /api/graph` / `GET /api/graph/semantic` | `GET /api/graph/legacy` |
+| Chat | pending semantic chat | `POST /api/chat` (legacy retrieval) |
+
+---
+
 ## Summary Table
 
 | File | Status | Priority | Sprint |
 |------|--------|----------|--------|
 | `backend/app/main.py` | KEEP | Low | 2 |
-| `backend/app/api/endpoints.py` | REFACTOR | High | 2, updated 4 |
+| `backend/app/api/endpoints.py` | REFACTOR (shim after split) | High | 2, updated 4, split 7 |
 | `backend/app/core/db.py` | KEEP | Low | 2 |
 | `backend/app/services/ingestion.py` | **LEGACY** | Low | — (kept for fallback) |
-| `backend/app/services/retrieval.py` | REFACTOR | High | future |
+| `backend/app/services/retrieval.py` | **LEGACY CORE (compat)** | High | isolated 7 |
+| `backend/app/services/legacy/retrieval.py` | KEEP (legacy namespace) | High | 7 |
 | `frontend/app/components/GraphViewer3D.tsx` | REFACTOR | Medium | future |
 | `frontend/app/components/CommandCenter.tsx` | KEEP | Low | future |
 | `frontend/app/components/FileLibrary.tsx` | KEEP | Low | future |

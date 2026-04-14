@@ -1,6 +1,12 @@
+"""Legacy retrieval debug script.
+
+This helper runs the current legacy chat retrieval path for diagnostics.
+Semantic query chat is pending and not wired here.
+"""
+
 import os
 from dotenv import load_dotenv
-from backend.app.services.retrieval import GraphRAGService
+from backend.app.services.legacy.retrieval import GraphRAGService
 
 # .env yükle
 load_dotenv()

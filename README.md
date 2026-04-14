@@ -96,62 +96,45 @@ uvicorn backend.app.main:app --reload
 
 ## ⚡ API Usage
 
-### 1. Ingest PDF (Process Document)
+### Current Migration Status
 
-Endpoint: POST /api/ingest  
-Body: 
-```json
-{
-  "file_path": "data/attention-is-all-you-need-paper.pdf",
-  "file_name": "attention-is-all-you-need-paper.pdf"  // optional
-}
-```
+- semantic ingestion = **primary**
+- semantic graph read = **new primary read path**
+- legacy chat/vector retrieval = **migration mode**
 
-Process: 
-- Parses PDF page-by-page (preserves page metadata)
-- Splits into chunks (1000 chars, 200 overlap)
-- Generates embeddings for each chunk
-- Creates Document and Chunk nodes in Neo4j
-- Links chunks to document via BELONGS_TO relationship
-- Returns: `{ "doc_id": "...", "chunk_count": 123, "status": "success" }`
+### 1. Ingest PDF
 
-**Note:** Processing runs as a background task. Check logs for progress.
+Endpoint: `POST /api/ingest`  
+Mode options:
+- `mode=semantic` (default, primary)
+- `mode=legacy` (fallback chunk/embedding path)
 
-### 2. Chat with Graph
+### 2. Read Graph
 
-Endpoint: POST /api/chat  
-Body: { "query": "How does the Attention mechanism differ from Recurrent layers?" }  
-Process: Converts Question to Cypher → Retrieves Neighborhood → Generates Answer
+- `GET /api/graph` → semantic default response contract (`nodes`, `edges`, `meta`)
+- `GET /api/graph/semantic` → semantic graph (same contract)
+- `GET /api/graph/legacy` → legacy `Document/Chunk` graph (`nodes`, `links`)
 
-## 📊 Graph Schema (Ontology)
+Semantic filters on `GET /api/graph`:
+- `document_id`
+- `node_types` (supports both `node_types=A,B` and repeated params)
+- `include_structural`
+- `include_evidence`
+- `include_citations`
 
-### Ingestion Schema (Document Storage)
+### 3. Chat
 
-The ingestion system creates a hierarchical structure:
+Endpoint: `POST /api/chat`  
+Status: current chat path uses **legacy retrieval**. Semantic query chat is pending.
 
-**Nodes:**
-- `Document`: Represents a PDF file
-  - Properties: `id` (UUID), `name`, `created_at` (timestamp)
-- `Chunk`: Represents a text chunk from the document
-  - Properties: `id` (UUID), `text`, `page` (int), `source`, `embedding` (List[Float])
+## 📊 Active Graph Docs
 
-**Relationships:**
-- `(:Chunk)-[:BELONGS_TO]->(:Document)`
+Use these as source of truth for the semantic model:
+- `docs/ontology_v1.md`
+- `docs/extraction_contract.md`
+- `docs/graph_storage_model.md`
 
-### Query Schema (Knowledge Graph)
-
-For advanced querying, the system can extract knowledge graphs with the following structure (defined in `docs/graph_schema.md`):
-
-**Nodes:**
-- `Paper`: The research document  
-- `Author`: Researchers  
-- `Concept`: Technical terms (e.g., "Self-Attention")  
-- `Institution`: Affiliations  
-
-**Relationships:**
-- `(:Author)-[:AUTHORED]->(:Paper)`  
-- `(:Paper)-[:MENTIONS]->(:Concept)`  
-- `(:Author)-[:AFFILIATED_WITH]->(:Institution)`  
+Deprecated/historical schema docs remain under `docs/deprecated/`.
 
 ---
 
@@ -166,6 +149,7 @@ python run_ingest.py
 ```
 
 Edit `PDF_PATH` in the script to process different files.
+This script is a legacy/debug helper.
 
 ### Query Testing
 
@@ -174,5 +158,7 @@ Test queries interactively:
 ```bash
 python run_query.py
 ```
+
+This script calls the current legacy retrieval path for diagnostics.
 
 ---

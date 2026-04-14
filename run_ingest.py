@@ -1,6 +1,8 @@
-"""Script to manually run PDF ingestion using IngestionService.
+"""Legacy ingestion debug script.
 
-This script processes a PDF file and extracts knowledge graph to Neo4j.
+This helper exercises the legacy chunk/embedding ingestion path via
+`IngestionService` for migration diagnostics.
+For the primary semantic path, prefer `POST /api/ingest` (default mode).
 """
 
 import logging
