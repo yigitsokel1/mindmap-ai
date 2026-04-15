@@ -19,10 +19,18 @@ export default function StatusBar() {
   useEffect(() => {
     const checkStatus = async () => {
       try {
-        // Check Neo4j and Graph status by fetching graph data
-        const response = await fetch(API_ENDPOINTS.GRAPH);
+        // Lightweight semantic ping avoids full graph payload fetches.
+        const response = await fetch(API_ENDPOINTS.QUERY_SEMANTIC, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            question: "health check",
+            max_evidence: 1,
+            include_citations: false,
+          }),
+        });
         const isHealthy = response.ok;
-        
+
         setStatus({
           neo4j: isHealthy,
           graph: isHealthy,
@@ -38,7 +46,7 @@ export default function StatusBar() {
     };
 
     checkStatus();
-    const interval = setInterval(checkStatus, 10000); // Check every 10 seconds
+    const interval = setInterval(checkStatus, 60000);
 
     return () => clearInterval(interval);
   }, []);

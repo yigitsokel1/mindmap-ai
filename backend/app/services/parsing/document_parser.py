@@ -13,6 +13,7 @@ Flow:
 import logging
 import uuid
 from dataclasses import dataclass, field
+from typing import Callable
 
 from backend.app.schemas.citation import CitationLinkRecord, InlineCitationRecord
 from backend.app.schemas.document_structure import ReferenceRecord, SectionRecord
@@ -50,6 +51,7 @@ def parse_document(
     document_id: str,
     chunk_size: int = 800,
     chunk_overlap: int = 100,
+    progress_callback: Callable[[str, dict | None], None] | None = None,
 ) -> DocumentParseResult:
     """Parse a PDF into section-aware PassageRecords.
 
@@ -74,6 +76,7 @@ def parse_document(
     splitter = PassageSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
 
     # Detect sections
+    _notify(progress_callback, "detecting_sections")
     sections = detect_sections(pages, document_id=document_id)
 
     # Find references boundary
@@ -82,6 +85,7 @@ def parse_document(
     # Parse references if boundary found
     references: list[ReferenceRecord] = []
     if ref_ordinal is not None:
+        _notify(progress_callback, "parsing_references")
         ref_section = sections[ref_ordinal]
         references = parse_references(
             pages, ref_section.page_start, document_id=document_id
@@ -265,4 +269,21 @@ def _link_inline_citations_to_references(
                         )
                     )
 
+    logger.info(
+        "Citation linking summary: citations=%d references=%d links=%d unlinked=%d",
+        len(inline_citations),
+        len(references),
+        len(links),
+        max(len(inline_citations) - len({link.inline_citation_id for link in links}), 0),
+    )
     return links
+
+
+def _notify(
+    progress_callback: Callable[[str, dict | None], None] | None,
+    stage: str,
+    details: dict | None = None,
+) -> None:
+    if not progress_callback:
+        return
+    progress_callback(stage, details)

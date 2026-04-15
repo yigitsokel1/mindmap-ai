@@ -13,6 +13,7 @@ export const API_ENDPOINTS = {
   CHAT: `${API_BASE_URL}/api/chat`,
   QUERY_SEMANTIC: `${API_BASE_URL}/api/query/semantic`,
   INGEST: `${API_BASE_URL}/api/ingest`,
+  INGEST_STATUS: (jobId: string) => `${API_BASE_URL}/api/ingest/${encodeURIComponent(jobId)}`,
   DOCUMENTS: `${API_BASE_URL}/api/documents`,
   STATIC: (filename: string) => `${API_BASE_URL}/static/${encodeURIComponent(filename)}`,
 } as const;

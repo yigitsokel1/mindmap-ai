@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -15,6 +16,13 @@ from backend.app.schemas.semantic_query import (
 )
 
 
+logger = logging.getLogger(__name__)
+
+
+class SemanticQueryServiceError(RuntimeError):
+    """Raised when semantic query execution fails internally."""
+
+
 class SemanticQueryService:
     """Answers semantic questions using graph evidence only."""
 
@@ -24,25 +32,43 @@ class SemanticQueryService:
             self.db.connect()
 
     def answer(self, request: SemanticQueryRequest) -> SemanticQueryAnswer:
-        tokens = self._tokenize_question(request.question)
-        candidate_nodes = self._find_candidate_nodes(
-            tokens=tokens,
-            document_id=request.document_id,
-            node_types=request.node_types,
-        )
-        evidence = self._collect_evidence(candidate_nodes, request.max_evidence, request.document_id)
-        citations = self._collect_citations(evidence, request.include_citations)
-        related_nodes = self._to_related_nodes(candidate_nodes)
-        answer_text = self._build_answer_text(request.question, evidence, related_nodes)
-        confidence = self._estimate_confidence(len(candidate_nodes), len(evidence))
+        try:
+            tokens = self._tokenize_question(request.question)
+            logger.info(
+                "Semantic query received question_len=%d token_count=%d document_id=%s node_types=%s",
+                len(request.question),
+                len(tokens),
+                request.document_id,
+                request.node_types,
+            )
+            candidate_nodes = self._find_candidate_nodes(
+                tokens=tokens,
+                document_id=request.document_id,
+                node_types=request.node_types,
+            )
+            evidence = self._collect_evidence(candidate_nodes, request.max_evidence, request.document_id)
+            citations = self._collect_citations(evidence, request.include_citations)
+            related_nodes = self._to_related_nodes(candidate_nodes)
+            answer_text = self._build_answer_text(request.question, evidence, related_nodes)
+            confidence = self._estimate_confidence(len(candidate_nodes), len(evidence))
+            logger.info(
+                "Semantic query completed candidate_nodes=%d evidence=%d citations=%d confidence=%.2f",
+                len(candidate_nodes),
+                len(evidence),
+                len(citations),
+                confidence,
+            )
 
-        return SemanticQueryAnswer(
-            answer=answer_text,
-            evidence=evidence,
-            related_nodes=related_nodes,
-            citations=citations,
-            confidence=confidence,
-        )
+            return SemanticQueryAnswer(
+                answer=answer_text,
+                evidence=evidence,
+                related_nodes=related_nodes,
+                citations=citations,
+                confidence=confidence,
+            )
+        except Exception as exc:
+            logger.error("Semantic query execution failed: %s", exc, exc_info=True)
+            raise SemanticQueryServiceError(str(exc)) from exc
 
     @staticmethod
     def _tokenize_question(question: str) -> List[str]:
@@ -60,29 +86,32 @@ class SemanticQueryService:
 
         query = """
         MATCH (n)
-        WHERE (
+        WHERE any(lbl IN labels(n) WHERE lbl IN ['Author', 'Institution', 'Concept', 'Method', 'Dataset', 'Metric', 'Task'])
+          AND NOT n:Document
+          AND NOT n:Section
+          AND NOT n:Passage
+          AND NOT n:ReferenceEntry
+          AND NOT n:InlineCitation
+          AND NOT n:Evidence
+          AND NOT n:RelationInstance
+          AND (
+            $document_id IS NULL
+            OR EXISTS {
+                MATCH (n)-[:OUT_REL]->(:RelationInstance)<-[:SUPPORTS]-(:Evidence)-[:FROM_PASSAGE]->(:Passage)<-[:HAS_PASSAGE]-(d:Document {uid: $document_id})
+            }
+          )
+          AND (
+            size($node_types) = 0
+            OR any(label IN labels(n) WHERE label IN $node_types)
+          )
+          AND (
             toLower(coalesce(n.canonical_name, "")) CONTAINS $joined_tokens
-            OR toLower(coalesce(n.display_name, "")) CONTAINS $joined_tokens
             OR any(token IN $tokens WHERE
                 toLower(coalesce(n.canonical_name, "")) CONTAINS token
-                OR toLower(coalesce(n.display_name, "")) CONTAINS token
                 OR toLower(coalesce(n.name, "")) CONTAINS token
                 OR toLower(coalesce(n.title, "")) CONTAINS token
             )
-        )
-        AND (
-            $document_id IS NULL
-            OR n.document_id = $document_id
-            OR n.doc_id = $document_id
-            OR EXISTS {
-                MATCH (n)-[*1..4]-(d:Document)
-                WHERE d.id = $document_id OR d.uid = $document_id OR d.name = $document_id
-            }
-        )
-        AND (
-            size($node_types) = 0
-            OR any(label IN labels(n) WHERE label IN $node_types)
-        )
+          )
         RETURN DISTINCT n
         LIMIT $limit
         """
@@ -95,7 +124,6 @@ class SemanticQueryService:
                 "node_types": list(node_types),
                 "limit": limit,
             },
-            database_="neo4j",
         )
         return [record for record in records if record.get("n") is not None]
 
@@ -111,29 +139,26 @@ class SemanticQueryService:
                 continue
             node_id = self._element_id(node)
             query = """
-            MATCH (n)-[r]-(ri:RelationInstance)
+            MATCH (n)-[:OUT_REL]->(ri:RelationInstance)
             WHERE elementId(n) = $node_id
             OPTIONAL MATCH (ev:Evidence)-[:SUPPORTS]->(ri)
             OPTIONAL MATCH (ev)-[:FROM_PASSAGE]->(p:Passage)
             OPTIONAL MATCH (d:Document)-[:HAS_PASSAGE]->(p)
+            WITH n, ri, ev, p, d
             WHERE (
                 $document_id IS NULL
                 OR d.uid = $document_id
-                OR d.id = $document_id
-                OR d.name = $document_id
             )
             OPTIONAL MATCH (p)-[:HAS_INLINE_CITATION]->(ic:InlineCitation)
             OPTIONAL MATCH (ic)-[:REFERS_TO]->(ref:ReferenceEntry)
-            RETURN n, r, ri, ev, p, d, ic, ref
+            RETURN n, ri, ev, p, d, ic, ref
             LIMIT $limit
             """
             records, _, _ = self.db.driver.execute_query(  # type: ignore[union-attr]
                 query,
                 {"node_id": node_id, "limit": max_evidence, "document_id": document_id},
-                database_="neo4j",
             )
             for item in records:
-                relation = item.get("r")
                 relation_instance = item.get("ri")
                 evidence = item.get("ev")
                 passage = item.get("p")
@@ -165,7 +190,7 @@ class SemanticQueryService:
 
                 evidence_items.append(
                     SemanticEvidenceItem(
-                        relation_type=self._pick_relation_type(relation_instance, relation),
+                        relation_type=self._pick_relation_type(relation_instance, None),
                         page=page,
                         snippet=snippet,
                         related_node_ids=[
@@ -281,7 +306,12 @@ class SemanticQueryService:
     def _pick_document_name(document: Any) -> Optional[str]:
         if not document:
             return None
-        name = document.get("name") or document.get("title") or document.get("id")
+        name = (
+            document.get("title")
+            or document.get("file_name")
+            or document.get("saved_file_name")
+            or document.get("name")
+        )
         return str(name) if name else None
 
     @staticmethod
@@ -338,6 +368,11 @@ class SemanticQueryService:
 
     @staticmethod
     def _element_id(entity: Any) -> str:
+        if entity is None:
+            return ""
         if hasattr(entity, "element_id"):
             return str(entity.element_id)
-        return str(entity.id)
+        if hasattr(entity, "id"):
+            return str(entity.id)
+        uid = entity.get("uid") if hasattr(entity, "get") else None
+        return str(uid or "")

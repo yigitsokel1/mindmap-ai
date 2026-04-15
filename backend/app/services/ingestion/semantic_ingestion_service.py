@@ -14,6 +14,8 @@ import shutil
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from time import perf_counter
+from typing import Callable
 
 from backend.app.core.db import Neo4jDatabase
 from backend.app.services.parsing.document_parser import parse_document, ParseResult
@@ -91,7 +93,12 @@ class SemanticIngestionService:
         self.uploaded_docs_dir = Path(__file__).parent.parent.parent.parent / "uploaded_docs"
         self.uploaded_docs_dir.mkdir(exist_ok=True)
 
-    def ingest_pdf(self, file_path: str, file_name: str) -> IngestionResult:
+    def ingest_pdf(
+        self,
+        file_path: str,
+        file_name: str,
+        progress_callback: Callable[[str, dict | None], None] | None = None,
+    ) -> IngestionResult:
         """Ingest a PDF through the semantic extraction pipeline.
 
         Args:
@@ -104,6 +111,9 @@ class SemanticIngestionService:
         pdf_path = Path(file_path)
         if not pdf_path.exists():
             raise FileNotFoundError(f"PDF not found: {file_path}")
+
+        started_at = perf_counter()
+        self._notify(progress_callback, "uploaded", {"file_name": file_name})
 
         # Step 1: Duplicate check
         file_hash = self._calculate_file_hash(pdf_path)
@@ -125,33 +135,45 @@ class SemanticIngestionService:
         document_id = str(uuid.uuid4())
 
         # Step 4: Parse PDF into section-aware passages
+        self._notify(progress_callback, "parsing")
         saved_path = self.uploaded_docs_dir / saved_name
-        parse_result = parse_document(str(saved_path), document_id)
+        parse_result = parse_document(
+            str(saved_path),
+            document_id,
+            progress_callback=progress_callback,
+        )
 
         # Step 5: Ensure document node has full metadata
         self._store_document_metadata(document_id, file_name, file_hash, saved_name)
 
         # Step 6: Write section nodes to graph
         if parse_result.sections:
+            self._notify(progress_callback, "writing_graph", {"subphase": "sections"})
             self.writer.write_sections(parse_result.sections, document_id)
 
         # Step 7: Write reference entries to graph
         if parse_result.references:
+            self._notify(progress_callback, "writing_graph", {"subphase": "references"})
             self.writer.write_references(parse_result.references, document_id)
 
         # Step 8: Write inline citation nodes and links
+        inline_citation_stats = {"citations_written": 0, "citation_links_written": 0}
         if parse_result.inline_citations:
-            self.writer.write_inline_citations(
+            self._notify(progress_callback, "writing_graph", {"subphase": "inline_citations"})
+            inline_citation_stats = self.writer.write_inline_citations(
                 parse_result.inline_citations,
                 parse_result.citation_links,
             )
 
         # Step 9: Run extraction pipeline (on body passages only)
+        self._notify(progress_callback, "extracting_semantics")
         pipeline_result = self.pipeline.run(
             document_id=document_id,
             passages=parse_result.passages,
             inline_citations=parse_result.inline_citations,
         )
+        self._notify(progress_callback, "completed", {"document_id": document_id})
+        elapsed = perf_counter() - started_at
 
         logger.info(
             "Semantic ingestion complete for %s: %d entities, %d relations, "
@@ -164,6 +186,16 @@ class SemanticIngestionService:
             len(parse_result.references),
             len(parse_result.inline_citations),
             len(parse_result.citation_links),
+        )
+        logger.info(
+            "Dropped summary for %s: entities_dropped=%d relations_dropped=%d "
+            "inline_citations_written=%d citation_links_written=%d elapsed=%.2fs",
+            file_name,
+            pipeline_result.entities_dropped,
+            pipeline_result.relations_dropped,
+            inline_citation_stats["citations_written"],
+            inline_citation_stats["citation_links_written"],
+            elapsed,
         )
 
         return IngestionResult(
@@ -190,6 +222,16 @@ class SemanticIngestionService:
             reference_passages_skipped=pipeline_result.reference_passages_skipped,
             errors=pipeline_result.errors,
         )
+
+    @staticmethod
+    def _notify(
+        progress_callback: Callable[[str, dict | None], None] | None,
+        stage: str,
+        details: dict | None = None,
+    ) -> None:
+        if not progress_callback:
+            return
+        progress_callback(stage, details)
 
     def _calculate_file_hash(self, file_path: Path) -> str:
         """Calculate MD5 hash of a file."""

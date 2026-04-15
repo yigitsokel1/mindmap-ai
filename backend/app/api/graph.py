@@ -1,5 +1,7 @@
 """Graph API endpoints for semantic and legacy views."""
 
+import logging
+import time
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -9,6 +11,7 @@ from backend.app.schemas.graph_response import GraphResponse
 from backend.app.services.query.semantic_graph_reader import SemanticGraphFilters, SemanticGraphReader
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _normalize_node_types(node_types: Optional[List[str]]) -> List[str]:
@@ -36,6 +39,7 @@ async def get_semantic_graph(
     include_citations: bool = False,
 ):
     """Return semantic graph view used as the default read path."""
+    started_at = time.perf_counter()
     try:
         reader = SemanticGraphReader()
         filters = SemanticGraphFilters(
@@ -45,7 +49,19 @@ async def get_semantic_graph(
             include_evidence=include_evidence,
             include_citations=include_citations,
         )
-        return reader.read_graph(filters)
+        result = reader.read_graph(filters)
+        logger.info(
+            "Graph fetch summary document_id=%s node_types=%s structural=%s evidence=%s citations=%s nodes=%d edges=%d elapsed=%.3fs",
+            document_id,
+            filters.node_types,
+            include_structural,
+            include_evidence,
+            include_citations,
+            len(result.nodes),
+            len(result.edges),
+            time.perf_counter() - started_at,
+        )
+        return result
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Error retrieving semantic graph: {exc}") from exc
 

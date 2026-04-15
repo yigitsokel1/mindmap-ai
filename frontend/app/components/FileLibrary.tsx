@@ -5,7 +5,27 @@ import { FileText, Upload, Loader2 } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
 import { API_ENDPOINTS } from "../lib/constants";
 import { fetchSemanticGraph, getPresetFilters } from "../lib/api";
-import type { Document, GraphNode } from "../lib/types";
+import type { Document, GraphNode, IngestJobStatus } from "../lib/types";
+
+const INGEST_STAGE_LABELS: Record<IngestJobStatus["stage"], string> = {
+  uploaded: "Uploading file",
+  parsing: "Parsing PDF",
+  detecting_sections: "Detecting sections",
+  parsing_references: "Parsing references",
+  extracting_semantics: "Extracting entities/relations",
+  writing_graph: "Writing graph",
+  completed: "Completed",
+  failed: "Failed",
+};
+
+function prettifyDocumentId(documentId: string): string {
+  if (!documentId) return "Untitled document";
+  const compact = documentId.replace(/[^a-zA-Z0-9_-]/g, "");
+  if (!compact) return "Untitled document";
+  return `Document ${compact.slice(0, 8)}`;
+}
+
+let cachedDocuments: Document[] | null = null;
 
 export default function FileLibrary() {
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -13,7 +33,9 @@ export default function FileLibrary() {
   const [isUploading, setIsUploading] = useState(false);
   const [isServerProcessing, setIsServerProcessing] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const { openPDFViewer, setSelectedDocumentId } = useAppStore();
+  const [ingestMessage, setIngestMessage] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const { openPDFViewer, setSelectedDocumentId, requestGraphRefresh } = useAppStore();
 
   const refreshDocuments = async () => {
     const data = await fetchSemanticGraph(
@@ -28,24 +50,26 @@ export default function FileLibrary() {
     const docMap = new Map<string, Document>();
     if (data.nodes) {
       data.nodes.forEach((node: GraphNode) => {
-        if (node.label === "Document" && node.id) {
-          const fileName =
-            node.display_name ||
-            (node.properties?.file_name as string | undefined) ||
-            (node.properties?.title as string | undefined);
-
-          if (!fileName) return;
+        const nodeType = node.label || node.type;
+        if (nodeType === "Document" && node.id) {
+          const title = node.display_name || (node.properties?.title as string | undefined);
+          const fileName = node.properties?.file_name as string | undefined;
+          const displayName = title || fileName || prettifyDocumentId(node.id);
+          const resolvedFileName = fileName || (node.properties?.saved_file_name as string | undefined) || "";
 
           if (!docMap.has(node.id)) {
             docMap.set(node.id, {
               id: node.id,
-              name: fileName,
+              name: resolvedFileName,
+              label: displayName,
             });
           }
         }
       });
     }
-    setDocuments(Array.from(docMap.values()));
+    const nextDocuments = Array.from(docMap.values());
+    setDocuments(nextDocuments);
+    cachedDocuments = nextDocuments;
   };
 
   // Fetch documents from graph data
@@ -53,6 +77,10 @@ export default function FileLibrary() {
     const fetchDocuments = async () => {
       try {
         setIsLoading(true);
+        if (cachedDocuments) {
+          setDocuments(cachedDocuments);
+          return;
+        }
         await refreshDocuments();
       } catch (error) {
         console.error("Error fetching documents:", error);
@@ -76,6 +104,8 @@ export default function FileLibrary() {
     setIsUploading(true);
     setIsServerProcessing(false);
     setUploadProgress(0);
+    setIngestMessage(INGEST_STAGE_LABELS.uploaded);
+    setUploadError(null);
 
     try {
       const formData = new FormData();
@@ -92,6 +122,7 @@ export default function FileLibrary() {
       xhr.upload.addEventListener("load", () => {
         setUploadProgress(100);
         setIsServerProcessing(true);
+        setIngestMessage(INGEST_STAGE_LABELS.parsing);
       });
 
       xhr.addEventListener("load", async () => {
@@ -105,8 +136,14 @@ export default function FileLibrary() {
             document_id?: string;
             file_name?: string;
             status?: string;
+            ingest_job_id?: string;
           };
           const uploadedId = result.document_id || result.doc_id;
+          const ingestJobId = result.ingest_job_id;
+
+          if (ingestJobId) {
+            await pollIngestJob(ingestJobId);
+          }
 
           const uploadedName = result.file_name?.trim();
           if (uploadedId && uploadedName) {
@@ -115,6 +152,7 @@ export default function FileLibrary() {
               {
                 id: uploadedId,
                 name: uploadedName,
+                label: uploadedName,
                 created_at: new Date().toISOString(),
               },
             ]);
@@ -123,40 +161,75 @@ export default function FileLibrary() {
           }
 
           setUploadProgress(100);
+          setIngestMessage(INGEST_STAGE_LABELS.completed);
         } catch (error) {
           console.error("Upload response handling error:", error);
-          alert("Upload completed but response parsing failed. Refreshing list.");
+          setUploadError("Upload completed but response parsing failed. Document list refreshed.");
           await refreshDocuments();
         } finally {
           setTimeout(() => {
             setIsUploading(false);
             setIsServerProcessing(false);
             setUploadProgress(0);
+            setIngestMessage(null);
           }, 500);
         }
       });
 
       xhr.addEventListener("error", () => {
         console.error("Upload failed due to network error.");
+        setUploadError("Upload failed due to network error.");
         setIsUploading(false);
         setIsServerProcessing(false);
         setUploadProgress(0);
+        setIngestMessage(INGEST_STAGE_LABELS.failed);
       });
 
       xhr.open("POST", API_ENDPOINTS.INGEST);
       xhr.send(formData);
     } catch (error) {
       console.error("Upload error:", error);
+      setUploadError(error instanceof Error ? error.message : "Upload failed.");
       setIsUploading(false);
       setIsServerProcessing(false);
       setUploadProgress(0);
+      setIngestMessage(INGEST_STAGE_LABELS.failed);
     }
   };
 
+  const pollIngestJob = async (jobId: string) => {
+    for (let attempt = 0; attempt < 120; attempt += 1) {
+      const response = await fetch(API_ENDPOINTS.INGEST_STATUS(jobId));
+      if (!response.ok) {
+        throw new Error(`Failed to fetch ingest status: ${response.statusText}`);
+      }
+
+      const status = (await response.json()) as IngestJobStatus;
+      setIngestMessage(INGEST_STAGE_LABELS[status.stage]);
+
+      if (status.status === "completed") {
+        await refreshDocuments();
+        requestGraphRefresh();
+        return;
+      }
+      if (status.status === "failed") {
+        throw new Error(status.error || "Ingestion failed during processing.");
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+
+    throw new Error("Ingestion status polling timed out.");
+  };
+
   const handleDocClick = (doc: Document) => {
+    if (!doc.name) {
+      setUploadError("This document does not have a downloadable file name.");
+      return;
+    }
     const pdfUrl = API_ENDPOINTS.STATIC(doc.name);
     setSelectedDocumentId(doc.id);
-    openPDFViewer(pdfUrl, doc.name, 1);
+    openPDFViewer(pdfUrl, doc.label || doc.name, 1);
   };
 
   return (
@@ -184,7 +257,9 @@ export default function FileLibrary() {
 
               {/* File Info */}
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-mono text-white/90 truncate">{doc.name}</p>
+                <p className="text-xs font-mono text-white/90 truncate">
+                  {doc.label || doc.name || prettifyDocumentId(doc.id)}
+                </p>
                 {doc.created_at && (
                   <p className="text-[10px] text-white/40 font-mono mt-0.5">
                     {new Date(doc.created_at).toLocaleDateString()}
@@ -198,6 +273,14 @@ export default function FileLibrary() {
 
       {/* Upload Button - Holographic Style */}
       <div className="mt-4 pt-4 border-t border-white/10">
+        {uploadError && (
+          <p className="mb-2 text-[10px] font-mono text-red-300">{uploadError}</p>
+        )}
+        {(isUploading || ingestMessage) && ingestMessage && (
+          <p className="mb-2 text-[10px] font-mono text-cyan-300">
+            {ingestMessage}
+          </p>
+        )}
         <label className="block cursor-pointer">
           <div className="relative group">
             <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/20 via-purple-500/20 to-cyan-500/20 rounded-xl opacity-0 group-hover:opacity-100 blur-xl transition-opacity" />
@@ -206,9 +289,7 @@ export default function FileLibrary() {
                 <>
                   <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />
                   <span className="text-xs font-mono text-white/90">
-                    {isServerProcessing
-                      ? "PROCESSING ON SERVER..."
-                      : `UPLOADING ${Math.round(uploadProgress)}%`}
+                    {isServerProcessing ? ingestMessage || "PROCESSING ON SERVER..." : `UPLOADING ${Math.round(uploadProgress)}%`}
                   </span>
                   {!isServerProcessing && uploadProgress > 0 && (
                     <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-cyan-500/50">

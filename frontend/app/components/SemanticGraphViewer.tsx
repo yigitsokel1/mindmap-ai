@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ComponentProps, type MutableRefObject } from "react";
 import ForceGraph3D from "react-force-graph-3d";
-import { fetchSemanticGraph, toRenderData } from "../lib/api";
+import { fetchSemanticGraph, stableGraphFilterKey, toRenderData } from "../lib/api";
 import type { GraphNode, GraphRenderData } from "../lib/types";
 import { useAppStore } from "../store/useAppStore";
 
@@ -49,12 +49,14 @@ interface GraphViewerHandle {
 export default function SemanticGraphViewer() {
   const forceGraphRef = useRef<unknown>(undefined) as NonNullable<ComponentProps<typeof ForceGraph3D>["ref"]>;
   const graphRef = forceGraphRef as unknown as MutableRefObject<GraphViewerHandle | null>;
+  const lastFetchKeyRef = useRef<string>("");
   const [graphData, setGraphData] = useState<GraphRenderData>({ nodes: [], links: [] });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const {
     graphFilters,
+    graphRefreshToken,
     highlightedNodeIds,
     setSelectedNode,
     setSelectedNodeContext,
@@ -62,22 +64,38 @@ export default function SemanticGraphViewer() {
   } = useAppStore();
 
   useEffect(() => {
+    const requestKey = `${stableGraphFilterKey(graphFilters)}:${graphRefreshToken}`;
+    if (lastFetchKeyRef.current === requestKey) {
+      return;
+    }
+    lastFetchKeyRef.current = requestKey;
+    let cancelled = false;
+
     const loadGraph = async () => {
       setIsLoading(true);
       setError(null);
 
       try {
         const response = await fetchSemanticGraph(graphFilters);
-        setGraphData(toRenderData(response));
+        if (!cancelled) {
+          setGraphData(toRenderData(response));
+        }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Graph load failed");
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Graph load failed");
+        }
       } finally {
-        setIsLoading(false);
+        if (!cancelled) {
+          setIsLoading(false);
+        }
       }
     };
 
     loadGraph();
-  }, [graphFilters]);
+    return () => {
+      cancelled = true;
+    };
+  }, [graphFilters, graphRefreshToken]);
 
   useEffect(() => {
     if (!graphRef.current || highlightedNodeIds.length === 0) return;

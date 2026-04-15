@@ -82,3 +82,16 @@ def test_query_semantic_endpoint_empty_evidence_branch(api_client, monkeypatch):
 def test_query_semantic_endpoint_validation(api_client):
     response = api_client.post("/api/query/semantic", json={"question": "", "max_evidence": 0})
     assert response.status_code == 422
+
+
+def test_query_semantic_endpoint_returns_controlled_500(api_client, monkeypatch):
+    import backend.app.api.query as query_api
+
+    class FailingSemanticQueryService:
+        def answer(self, request):
+            raise query_api.SemanticQueryServiceError("db timeout")
+
+    monkeypatch.setattr(query_api, "SemanticQueryService", FailingSemanticQueryService)
+    response = api_client.post("/api/query/semantic", json={"question": "What methods are mentioned in this paper?"})
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Semantic query processing failed. Please try again."

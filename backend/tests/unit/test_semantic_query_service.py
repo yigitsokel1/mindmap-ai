@@ -35,7 +35,7 @@ class FakeDriver:
                 None,
                 None,
             )
-        if "MATCH (n)-[r]-(ri:RelationInstance)" in query:
+        if "MATCH (n)-[:OUT_REL]->(ri:RelationInstance)" in query:
             return (
                 [
                     {
@@ -94,6 +94,7 @@ def test_semantic_query_service_uses_current_schema_edges(monkeypatch):
     service = SemanticQueryService()
     service.answer(SemanticQueryRequest(question="what evidence supports transformer?"))
 
+    assert "MATCH (n)-[:OUT_REL]->(ri:RelationInstance)" in fake_db.driver.last_query
     assert "[:SUPPORTS]" in fake_db.driver.last_query
     assert "[:FROM_PASSAGE]" in fake_db.driver.last_query
     assert "[:HAS_INLINE_CITATION]" in fake_db.driver.last_query
@@ -118,7 +119,7 @@ def test_semantic_query_service_citation_label_fallbacks(monkeypatch):
         def execute_query(self, query, params=None, database_=None):
             if "RETURN DISTINCT n" in query:
                 return ([{"n": FakeNode("n-1", ["Concept"], {"display_name": "Attention"})}], None, None)
-            if "MATCH (n)-[r]-(ri:RelationInstance)" in query:
+            if "MATCH (n)-[:OUT_REL]->(ri:RelationInstance)" in query:
                 return (
                     [
                         {

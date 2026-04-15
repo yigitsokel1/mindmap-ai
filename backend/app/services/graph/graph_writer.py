@@ -324,11 +324,14 @@ class GraphWriter:
         self,
         citations: list[InlineCitationRecord],
         citation_links: list[CitationLinkRecord],
-    ):
+    ) -> dict:
         """Write InlineCitation nodes and structural citation edges."""
+        citations_written = 0
+        citation_links_written = 0
+        unlinked_citations = 0
         with self.db.driver.session() as session:
             for citation in citations:
-                session.run(
+                result = session.run(
                     "MERGE (c:InlineCitation {uid: $uid}) "
                     "ON CREATE SET c.raw_text = $raw_text, "
                     "             c.citation_style = $citation_style, "
@@ -347,7 +350,8 @@ class GraphWriter:
                     "             c.reference_labels = $reference_labels "
                     "WITH c "
                     "MATCH (p:Passage {uid: $passage_uid}) "
-                    "MERGE (p)-[:HAS_INLINE_CITATION]->(c)",
+                    "MERGE (p)-[:HAS_INLINE_CITATION]->(c) "
+                    "RETURN c.uid AS citation_uid",
                     {
                         "uid": citation.citation_id,
                         "raw_text": citation.raw_text,
@@ -361,19 +365,40 @@ class GraphWriter:
                         "now": _now_iso(),
                     },
                 )
+                if result.single():
+                    citations_written += 1
+                else:
+                    unlinked_citations += 1
 
             for link in citation_links:
-                session.run(
+                result = session.run(
                     "MATCH (c:InlineCitation {uid: $citation_uid}) "
                     "MATCH (r:ReferenceEntry {uid: $reference_uid}) "
                     "MERGE (c)-[rel:REFERS_TO]->(r) "
-                    "SET rel.confidence = $confidence",
+                    "SET rel.confidence = $confidence "
+                    "RETURN rel",
                     {
                         "citation_uid": link.inline_citation_id,
                         "reference_uid": link.reference_entry_id,
                         "confidence": link.confidence,
                     },
                 )
+                if result.single():
+                    citation_links_written += 1
+
+        logger.info(
+            "Inline citation write summary: citations=%d linked_to_passage=%d "
+            "missing_passage_links=%d refers_to_links=%d",
+            len(citations),
+            citations_written,
+            unlinked_citations,
+            citation_links_written,
+        )
+        return {
+            "citations_written": citations_written,
+            "citation_links_written": citation_links_written,
+            "unlinked_citations": unlinked_citations,
+        }
 
     def _ensure_section(self, session, section: SectionRecord, document_id: str):
         """MERGE a Section node and link to Document."""

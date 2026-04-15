@@ -30,6 +30,23 @@ function buildGraphUrl(filters: GraphFilters): string {
   return url.toString();
 }
 
+function normalizeNodeTypes(nodeTypes?: string[]): string[] | undefined {
+  if (!nodeTypes || nodeTypes.length === 0) return undefined;
+  return [...nodeTypes].sort((a, b) => a.localeCompare(b));
+}
+
+export function stableGraphFilterKey(filters: GraphFilters): string {
+  return JSON.stringify({
+    document_id: filters.document_id ?? null,
+    node_types: normalizeNodeTypes(filters.node_types) ?? [],
+    include_structural: typeof filters.include_structural === "boolean" ? filters.include_structural : null,
+    include_evidence: typeof filters.include_evidence === "boolean" ? filters.include_evidence : null,
+    include_citations: typeof filters.include_citations === "boolean" ? filters.include_citations : null,
+  });
+}
+
+const inFlightGraphRequests = new Map<string, Promise<GraphResponse>>();
+
 export function getPresetFilters(
   preset: GraphPreset = DEFAULT_GRAPH_PRESET,
   overrides?: GraphFilters
@@ -41,12 +58,26 @@ export function getPresetFilters(
 }
 
 export async function fetchSemanticGraph(filters: GraphFilters = {}): Promise<GraphResponse> {
-  const response = await fetch(buildGraphUrl(filters));
-  if (!response.ok) {
-    throw new Error(`Failed to fetch semantic graph: ${response.statusText}`);
+  const key = stableGraphFilterKey(filters);
+  const active = inFlightGraphRequests.get(key);
+  if (active) {
+    return active;
   }
 
-  return response.json() as Promise<GraphResponse>;
+  const request = (async () => {
+    const response = await fetch(buildGraphUrl(filters));
+    if (!response.ok) {
+      throw new Error(`Failed to fetch semantic graph: ${response.statusText}`);
+    }
+    return response.json() as Promise<GraphResponse>;
+  })();
+
+  inFlightGraphRequests.set(key, request);
+  try {
+    return await request;
+  } finally {
+    inFlightGraphRequests.delete(key);
+  }
 }
 
 export function toRenderData(response: GraphResponse): GraphRenderData {

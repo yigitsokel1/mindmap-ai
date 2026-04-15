@@ -72,6 +72,7 @@ export interface GraphFilters {
 export interface Document {
   id: string;
   name: string;
+  label?: string;
   created_at?: string;
 }
 
@@ -137,4 +138,25 @@ export interface SemanticQueryResponse {
   citations: SemanticCitationItem[];
   confidence: number;
   mode: "semantic_grounded";
+}
+
+export interface IngestJobStatus {
+  ingest_job_id: string;
+  file_name: string;
+  mode: string;
+  stage:
+    | "uploaded"
+    | "parsing"
+    | "detecting_sections"
+    | "parsing_references"
+    | "extracting_semantics"
+    | "writing_graph"
+    | "completed"
+    | "failed";
+  status: "running" | "completed" | "failed";
+  created_at: string;
+  updated_at: string;
+  document_id?: string | null;
+  error?: string | null;
+  details?: Record<string, unknown>;
 }

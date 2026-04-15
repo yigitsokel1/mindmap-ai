@@ -18,6 +18,7 @@ import type {
 export default function CommandCenter() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [semanticResult, setSemanticResult] = useState<SemanticQueryResponse | null>(null);
+  const [semanticError, setSemanticError] = useState<string | null>(null);
   const [inputMessage, setInputMessage] = useState("");
   const [isLoadingResponse, setIsLoadingResponse] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -67,6 +68,9 @@ export default function CommandCenter() {
     }
     setInputMessage("");
     setIsLoadingResponse(true);
+    if (queryMode === "semantic_query") {
+      setSemanticError(null);
+    }
 
     try {
       const response = await fetch(
@@ -87,7 +91,16 @@ export default function CommandCenter() {
       );
 
       if (!response.ok) {
-        throw new Error(`Failed to get response: ${response.statusText}`);
+        let detail = response.statusText;
+        try {
+          const errorBody = (await response.json()) as { detail?: string };
+          if (errorBody.detail) {
+            detail = errorBody.detail;
+          }
+        } catch {
+          // Keep default status text fallback.
+        }
+        throw new Error(`Failed to get response: ${detail}`);
       }
 
       if (queryMode === "legacy_chat") {
@@ -105,6 +118,7 @@ export default function CommandCenter() {
       } else {
         const data: SemanticQueryResponse = await response.json();
         setSemanticResult(data);
+        setSemanticError(null);
         const highlighted = data.related_nodes.map((node) => node.id);
         setHighlightedNodes(highlighted);
       }
@@ -117,14 +131,9 @@ export default function CommandCenter() {
         };
         setMessages((prev) => [...prev, errorMessage]);
       } else {
-        setSemanticResult({
-          answer: `Error: ${error instanceof Error ? error.message : "Unknown error occurred"}`,
-          evidence: [],
-          related_nodes: [],
-          citations: [],
-          confidence: 0,
-          mode: "semantic_grounded",
-        });
+        setSemanticResult(null);
+        setHighlightedNodes([]);
+        setSemanticError(error instanceof Error ? error.message : "Unknown error occurred");
       }
     } finally {
       setIsLoadingResponse(false);
@@ -386,6 +395,14 @@ export default function CommandCenter() {
                       </button>
                     ))}
                   </div>
+                </div>
+              )}
+              {queryMode === "semantic_query" && semanticError && (
+                <div className="bg-black/40 border-l-2 border-red-500 rounded px-3 py-2">
+                  <p className="text-[10px] uppercase tracking-wide text-red-300 font-mono mb-1">
+                    Query Error
+                  </p>
+                  <p className="text-xs text-white/90 font-mono leading-relaxed">{semanticError}</p>
                 </div>
               )}
 
