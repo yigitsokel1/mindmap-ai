@@ -1,5 +1,7 @@
 """Inspector node detail contract for explainability views."""
 
+from typing import Dict, Optional
+
 from pydantic import BaseModel
 
 
@@ -13,11 +15,14 @@ class NodeEvidenceItem(BaseModel):
     text: str
     passage_id: str
     document_id: str
+    section: Optional[str] = None
+    score: Optional[float] = None
 
 
 class NodeCitationItem(BaseModel):
     title: str
-    year: int
+    year: Optional[int] = None
+    label: Optional[str] = None
 
 
 class NodeRelations(BaseModel):
@@ -30,6 +35,7 @@ class NodeDetail(BaseModel):
     type: str
     name: str
     summary: str
+    metadata: Dict[str, str | int | float | bool | None]
     relations: NodeRelations
     evidences: list[NodeEvidenceItem]
     citations: list[NodeCitationItem]

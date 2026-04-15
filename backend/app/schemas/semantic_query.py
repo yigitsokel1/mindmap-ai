@@ -19,6 +19,8 @@ class SemanticEvidenceItem(BaseModel):
     relation_type: str
     page: Optional[int] = None
     snippet: str = ""
+    section: Optional[str] = None
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     related_node_ids: List[str] = Field(default_factory=list)
     document_id: Optional[str] = None
     document_name: Optional[str] = None
@@ -39,10 +41,24 @@ class CitationItem(BaseModel):
     document_name: Optional[str] = None
 
 
+class MatchedEntityItem(BaseModel):
+    id: str
+    type: str
+    display_name: str
+
+
+class QueryExplanation(BaseModel):
+    why_these_entities: List[str] = Field(default_factory=list)
+    why_this_evidence: List[str] = Field(default_factory=list)
+
+
 class SemanticQueryAnswer(BaseModel):
     answer: str
+    query_intent: str = "SUMMARY"
+    matched_entities: List[MatchedEntityItem] = Field(default_factory=list)
     evidence: List[SemanticEvidenceItem] = Field(default_factory=list)
     related_nodes: List[RelatedNodeItem] = Field(default_factory=list)
     citations: List[CitationItem] = Field(default_factory=list)
+    explanation: QueryExplanation = Field(default_factory=QueryExplanation)
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     mode: Literal["semantic_grounded"] = "semantic_grounded"

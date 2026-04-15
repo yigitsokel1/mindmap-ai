@@ -120,6 +120,8 @@ export interface SemanticEvidenceItem {
   relation_type: string;
   page?: number | null;
   snippet: string;
+  section?: string | null;
+  confidence?: number;
   related_node_ids: string[];
   document_id?: string | null;
   document_name?: string | null;
@@ -140,11 +142,19 @@ export interface SemanticRelatedNode {
   display_name: string;
 }
 
+export interface SemanticExplanation {
+  why_these_entities: string[];
+  why_this_evidence: string[];
+}
+
 export interface SemanticQueryResponse {
   answer: string;
+  query_intent: string;
+  matched_entities: SemanticRelatedNode[];
   evidence: SemanticEvidenceItem[];
   related_nodes: SemanticRelatedNode[];
   citations: SemanticCitationItem[];
+  explanation: SemanticExplanation;
   confidence: number;
   mode: "semantic_grounded";
 }

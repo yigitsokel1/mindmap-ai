@@ -4,16 +4,21 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence
 
 from backend.app.core.db import Neo4jDatabase
 from backend.app.schemas.semantic_query import (
     CitationItem,
+    MatchedEntityItem,
+    QueryExplanation,
     RelatedNodeItem,
     SemanticEvidenceItem,
     SemanticQueryAnswer,
     SemanticQueryRequest,
 )
+from backend.app.services.query.evidence_ranker import EvidenceRanker
+from backend.app.services.query.question_interpreter import InterpretedQuestion, QuestionInterpreter
+from backend.app.services.query.traversal_planner import TraversalPlan, TraversalPlanner
 
 
 logger = logging.getLogger(__name__)
@@ -30,33 +35,35 @@ class SemanticQueryService:
         self.db = Neo4jDatabase()
         if not self.db.driver:
             self.db.connect()
+        self.interpreter = QuestionInterpreter()
+        self.traversal_planner = TraversalPlanner()
+        self.evidence_ranker = EvidenceRanker()
 
     def answer(self, request: SemanticQueryRequest) -> SemanticQueryAnswer:
         try:
-            tokens = self._tokenize_question(request.question)
+            interpreted = self.interpret_question(request)
             logger.info(
-                "Semantic query received question_len=%d token_count=%d document_id=%s node_types=%s include_citations=%s max_evidence=%d",
+                "Semantic query received question_len=%d intent=%s document_id=%s node_types=%s include_citations=%s max_evidence=%d",
                 len(request.question),
-                len(tokens),
+                interpreted.intent,
                 request.document_id,
                 request.node_types,
                 request.include_citations,
                 request.max_evidence,
             )
-            candidate_nodes = self._find_candidate_nodes(
-                tokens=tokens,
-                document_id=request.document_id,
-                node_types=request.node_types,
-            )
-            evidence = self._collect_evidence(candidate_nodes, request.max_evidence, request.document_id)
-            citations = self._collect_citations(evidence, request.include_citations)
+            candidate_nodes = self.select_candidate_entities(request, interpreted)
+            traversal_plan = self.decide_traversal_scope(request, interpreted)
+            evidence = self.collect_evidence(request, candidate_nodes, traversal_plan)
+            ranked_evidence = self.rank_evidence(interpreted, candidate_nodes, evidence, request.max_evidence)
+            citations = self._collect_citations(ranked_evidence, request.include_citations)
             related_nodes = self._to_related_nodes(candidate_nodes)
-            answer_text = self._build_answer_text(request.question, evidence, related_nodes)
-            confidence = self._estimate_confidence(len(candidate_nodes), len(evidence))
+            answer_text = self.compose_answer(request, interpreted, ranked_evidence, related_nodes)
+            confidence = self._estimate_confidence(len(candidate_nodes), len(ranked_evidence))
+            explanation = self._build_explanation(interpreted, candidate_nodes, ranked_evidence, traversal_plan)
             logger.info(
                 "Semantic query completed candidate_nodes=%d evidence=%d citations=%d confidence=%.2f document_id=%s",
                 len(candidate_nodes),
-                len(evidence),
+                len(ranked_evidence),
                 len(citations),
                 confidence,
                 request.document_id,
@@ -64,9 +71,12 @@ class SemanticQueryService:
 
             return SemanticQueryAnswer(
                 answer=answer_text,
-                evidence=evidence,
+                query_intent=interpreted.intent,
+                matched_entities=self._to_matched_entities(candidate_nodes),
+                evidence=ranked_evidence,
                 related_nodes=related_nodes,
                 citations=citations,
+                explanation=explanation,
                 confidence=confidence,
             )
         except Exception as exc:
@@ -76,6 +86,59 @@ class SemanticQueryService:
     @staticmethod
     def _tokenize_question(question: str) -> List[str]:
         return [part for part in re.findall(r"[a-zA-Z0-9_]+", question.lower()) if len(part) > 2]
+
+    def interpret_question(self, request: SemanticQueryRequest) -> InterpretedQuestion:
+        return self.interpreter.interpret(request.question, request.document_id)
+
+    def select_candidate_entities(
+        self, request: SemanticQueryRequest, interpreted: InterpretedQuestion
+    ) -> List[Dict[str, Any]]:
+        tokens = interpreted.entity_hints or self._tokenize_question(request.question)
+        return self._find_candidate_nodes(
+            tokens=tokens,
+            document_id=request.document_id,
+            node_types=request.node_types,
+        )
+
+    def decide_traversal_scope(
+        self, request: SemanticQueryRequest, interpreted: InterpretedQuestion
+    ) -> TraversalPlan:
+        return self.traversal_planner.build_plan(interpreted, request.max_evidence)
+
+    def collect_evidence(
+        self,
+        request: SemanticQueryRequest,
+        candidate_nodes: Sequence[Dict[str, Any]],
+        traversal_plan: TraversalPlan,
+    ) -> List[SemanticEvidenceItem]:
+        return self._collect_evidence(
+            candidate_nodes=candidate_nodes,
+            max_evidence=request.max_evidence,
+            document_id=request.document_id,
+            traversal_plan=traversal_plan,
+        )
+
+    def rank_evidence(
+        self,
+        interpreted: InterpretedQuestion,
+        candidate_nodes: Sequence[Dict[str, Any]],
+        evidence: Sequence[SemanticEvidenceItem],
+        max_evidence: int,
+    ) -> List[SemanticEvidenceItem]:
+        candidate_names = []
+        for node in self._to_related_nodes(candidate_nodes):
+            candidate_names.append(node.display_name)
+        ranked = self.evidence_ranker.rank(evidence, interpreted=interpreted, candidate_names=candidate_names)
+        return ranked[:max_evidence]
+
+    def compose_answer(
+        self,
+        request: SemanticQueryRequest,
+        interpreted: InterpretedQuestion,
+        evidence: Sequence[SemanticEvidenceItem],
+        related_nodes: Sequence[RelatedNodeItem],
+    ) -> str:
+        return self._build_answer_text(request.question, interpreted.intent, evidence, related_nodes)
 
     def _find_candidate_nodes(
         self,
@@ -131,10 +194,15 @@ class SemanticQueryService:
         return [record for record in records if record.get("n") is not None]
 
     def _collect_evidence(
-        self, candidate_nodes: Sequence[Dict[str, Any]], max_evidence: int, document_id: Optional[str]
+        self,
+        candidate_nodes: Sequence[Dict[str, Any]],
+        max_evidence: int,
+        document_id: Optional[str],
+        traversal_plan: TraversalPlan,
     ) -> List[SemanticEvidenceItem]:
         evidence_items: List[SemanticEvidenceItem] = []
         seen_keys = set()
+        per_candidate_limit = traversal_plan.max_evidence_per_candidate
 
         for record in candidate_nodes:
             node = record.get("n")
@@ -146,6 +214,7 @@ class SemanticQueryService:
             WHERE elementId(n) = $node_id
             OPTIONAL MATCH (ev:Evidence)-[:SUPPORTS]->(ri)
             OPTIONAL MATCH (ev)-[:FROM_PASSAGE]->(p:Passage)
+            OPTIONAL MATCH (sec:Section)-[:HAS_PASSAGE]->(p)
             OPTIONAL MATCH (d:Document)-[:HAS_SECTION]->(:Section)-[:HAS_PASSAGE]->(p)
             WITH n, ri, ev, p, d
             WHERE (
@@ -159,13 +228,14 @@ class SemanticQueryService:
             """
             records, _, _ = self.db.driver.execute_query(  # type: ignore[union-attr]
                 query,
-                {"node_id": node_id, "limit": max_evidence, "document_id": document_id},
+                {"node_id": node_id, "limit": per_candidate_limit, "document_id": document_id},
             )
             for item in records:
                 relation_instance = item.get("ri")
                 evidence = item.get("ev")
                 passage = item.get("p")
                 document = item.get("d")
+                section = item.get("sec")
                 inline_citation = item.get("ic")
                 reference_entry = item.get("ref")
 
@@ -196,6 +266,8 @@ class SemanticQueryService:
                         relation_type=self._pick_relation_type(relation_instance, None),
                         page=page,
                         snippet=snippet,
+                        section=self._pick_section_name(section),
+                        confidence=self._pick_confidence(relation_instance, evidence),
                         related_node_ids=[
                             node_id,
                             self._element_id(relation_instance),
@@ -263,7 +335,10 @@ class SemanticQueryService:
 
     @staticmethod
     def _build_answer_text(
-        question: str, evidence: Sequence[SemanticEvidenceItem], related_nodes: Sequence[RelatedNodeItem]
+        question: str,
+        query_intent: str,
+        evidence: Sequence[SemanticEvidenceItem],
+        related_nodes: Sequence[RelatedNodeItem],
     ) -> str:
         if not related_nodes:
             logger.info("Semantic query empty result: no candidate nodes for question=%r", question)
@@ -276,24 +351,21 @@ class SemanticQueryService:
             )
             return f"Matched semantic nodes for '{question}', but no supporting evidence was found."
 
-        intent = SemanticQueryService._classify_question(question)
         first = evidence[0]
         first_node = related_nodes[0].display_name
         target = related_nodes[1].display_name if len(related_nodes) > 1 else "related context"
-        if intent == "evidence":
+        if query_intent in {"PROBLEM", "RELATION_LOOKUP"}:
             if first.snippet:
                 return f"Evidence supporting {first_node}: {first.snippet}"
             return f"Evidence exists for {first_node} via relation {first.relation_type}."
-        if intent in {"reference", "citation"}:
+        if query_intent == "CITATION_BASIS":
             cited = [item.citation_label for item in evidence if item.citation_label]
             if cited:
                 unique = ", ".join(sorted(dict.fromkeys(cited))[:3])
                 return f"Relevant citations for {first_node}: {unique}."
             return f"Reference evidence for {first_node} was found, but no citation labels were available."
-        if intent == "method":
+        if query_intent == "METHOD_USAGE":
             return f"Method-related grounding: {first_node} is linked to {target} via {first.relation_type}."
-        if intent == "concept":
-            return f"Concept grounding: {first_node} is semantically connected to {target} via {first.relation_type}."
         if first.snippet:
             return f"{first_node} is connected to {target} via {first.relation_type}. Evidence: {first.snippet}"
         return f"{first_node} is connected to {target} via {first.relation_type}."
@@ -353,20 +425,53 @@ class SemanticQueryService:
                 return str(rel_type)
         return str(getattr(relation, "type", "RELATED_TO"))
 
-    @staticmethod
-    def _classify_question(question: str) -> str:
-        lower = question.lower()
-        keywords = (
-            ("method", ["method", "methods"]),
-            ("concept", ["concept", "concepts"]),
-            ("evidence", ["evidence", "supports", "supported"]),
-            ("reference", ["reference", "references", "cited"]),
-            ("citation", ["citation", "citations"]),
+    def _to_matched_entities(self, candidate_nodes: Sequence[Dict[str, Any]]) -> List[MatchedEntityItem]:
+        entities: List[MatchedEntityItem] = []
+        for node in self._to_related_nodes(candidate_nodes):
+            entities.append(MatchedEntityItem(id=node.id, type=node.type, display_name=node.display_name))
+        return entities
+
+    def _build_explanation(
+        self,
+        interpreted: InterpretedQuestion,
+        candidate_nodes: Sequence[Dict[str, Any]],
+        evidence: Sequence[SemanticEvidenceItem],
+        traversal_plan: TraversalPlan,
+    ) -> QueryExplanation:
+        entity_reasons = []
+        if interpreted.entity_hints:
+            entity_reasons.append(f"Selected entities using query hints: {', '.join(interpreted.entity_hints[:4])}.")
+        entity_reasons.append(
+            f"Candidate selection returned {len(candidate_nodes)} graph entities for intent {interpreted.intent}."
         )
-        for intent, terms in keywords:
-            if any(term in lower for term in terms):
-                return intent
-        return "general"
+        evidence_reasons = [
+            f"Traversal strategy '{traversal_plan.strategy}' prioritized {', '.join(traversal_plan.relation_directions)} links."
+        ]
+        if evidence:
+            evidence_reasons.append(
+                f"Top evidence prioritized by entity mention, section weight, citation presence, confidence, and relation match."
+            )
+        return QueryExplanation(why_these_entities=entity_reasons, why_this_evidence=evidence_reasons)
+
+    @staticmethod
+    def _pick_section_name(section: Any) -> Optional[str]:
+        if not section:
+            return "Unknown"
+        title = section.get("title") or section.get("name") or section.get("heading")
+        return str(title) if title else "Unknown"
+
+    @staticmethod
+    def _pick_confidence(relation_instance: Any, evidence: Any) -> float:
+        for source in (relation_instance, evidence):
+            if not source:
+                continue
+            raw = source.get("confidence")
+            try:
+                if raw is not None:
+                    return max(0.0, min(1.0, float(raw)))
+            except (TypeError, ValueError):
+                continue
+        return 0.5
 
     @staticmethod
     def _safe_int(value: Any) -> Optional[int]:

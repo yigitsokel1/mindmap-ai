@@ -1,5 +1,6 @@
 from backend.app.schemas.graph_response import GraphEdge
 from backend.app.services.query.semantic_graph_reader import SemanticGraphFilters, SemanticGraphReader
+from backend.app.schemas.node_detail import NodeCitationItem, NodeEvidenceItem, NodeRelationItem
 
 
 class FakeNode:
@@ -85,3 +86,43 @@ def test_read_graph_empty_result_keeps_contract(monkeypatch):
     assert result.nodes == []
     assert result.edges == []
     assert result.meta.counts == {"nodes": 0, "edges": 0}
+
+
+def test_read_node_detail_shapes_contract(monkeypatch):
+    reader = object.__new__(SemanticGraphReader)
+    node = FakeNode("n1", ["Method"], {"canonical_name": "Transformer", "summary": "summary"})
+    monkeypatch.setattr(reader, "_load_node_by_id", lambda _node_id: {"n": node})
+    monkeypatch.setattr(
+        reader,
+        "_load_relation_neighbors",
+        lambda _node_id, direction, document_id=None: [
+            NodeRelationItem(id=f"{direction}-1", type="RELATED_TO", name=f"{direction}-node")
+        ],
+    )
+    monkeypatch.setattr(
+        reader,
+        "_load_node_evidences",
+        lambda _node_id, document_id=None: [
+            NodeEvidenceItem(text="evidence", passage_id="p1", document_id="doc-1", section="Methods", score=0.8)
+        ],
+    )
+    monkeypatch.setattr(
+        reader,
+        "_load_node_citations",
+        lambda _node_id, document_id=None: [NodeCitationItem(title="Ref", year=2017, label="[1]")],
+    )
+
+    detail = reader.read_node_detail("n1")
+    assert detail is not None
+    assert detail.id == "n1"
+    assert detail.type == "Method"
+    assert detail.name == "Transformer"
+    assert detail.evidences[0].text == "evidence"
+
+
+def test_read_node_detail_returns_none_for_missing_node(monkeypatch):
+    reader = object.__new__(SemanticGraphReader)
+    monkeypatch.setattr(reader, "_load_node_by_id", lambda _node_id: None)
+
+    detail = reader.read_node_detail("missing")
+    assert detail is None

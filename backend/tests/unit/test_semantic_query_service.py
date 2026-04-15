@@ -74,6 +74,7 @@ def test_semantic_query_service_builds_grounded_answer(monkeypatch):
     result = service.answer(SemanticQueryRequest(question="How is transformer related to self-attention?"))
 
     assert result.mode == "semantic_grounded"
+    assert result.query_intent in {"SUMMARY", "RELATION_LOOKUP"}
     assert "Transformer" in result.answer
     assert len(result.evidence) == 1
     assert result.evidence[0].relation_type == "SUPPORTS_METHOD"
@@ -82,6 +83,9 @@ def test_semantic_query_service_builds_grounded_answer(monkeypatch):
     assert result.evidence[0].citation_label == "[12]"
     assert result.evidence[0].reference_entry_id == "ref-1"
     assert len(result.related_nodes) == 2
+    assert len(result.matched_entities) == 2
+    assert result.explanation.why_these_entities
+    assert result.explanation.why_this_evidence
     assert len(result.citations) == 1
     assert result.confidence > 0
 
@@ -195,5 +199,6 @@ def test_semantic_query_service_handles_no_matches(monkeypatch):
     assert result.answer.startswith("No semantic grounding found")
     assert result.evidence == []
     assert result.related_nodes == []
+    assert result.matched_entities == []
     assert result.citations == []
     assert result.confidence == 0

@@ -3,19 +3,29 @@ class FakeSemanticQueryService:
         if request.document_id == "empty-evidence":
             return {
                 "answer": f"Matched semantic nodes for '{request.question}', but no supporting evidence was found.",
+                "query_intent": "SUMMARY",
+                "matched_entities": [{"id": "n-1", "type": "Method", "display_name": "Transformer"}],
                 "evidence": [],
                 "related_nodes": [{"id": "n-1", "type": "Method", "display_name": "Transformer"}],
                 "citations": [],
+                "explanation": {
+                    "why_these_entities": ["fallback semantic match"],
+                    "why_this_evidence": ["no evidence available"],
+                },
                 "confidence": 0.0,
                 "mode": "semantic_grounded",
             }
         return {
             "answer": f"Grounded response for: {request.question}",
+            "query_intent": "METHOD_USAGE",
+            "matched_entities": [{"id": "n-1", "type": "Method", "display_name": "Transformer"}],
             "evidence": [
                 {
                     "relation_type": "USES",
                     "page": 3,
                     "snippet": "Transformer uses self-attention.",
+                    "section": "Methods",
+                    "confidence": 0.9,
                     "related_node_ids": ["n-1", "ri-1"],
                     "document_id": "doc-1",
                     "document_name": "paper.pdf",
@@ -27,6 +37,10 @@ class FakeSemanticQueryService:
                 {"id": "n-1", "type": "Method", "display_name": "Transformer"},
             ],
             "citations": [{"label": "[12]", "reference_entry_id": "ref-1", "page": 3, "document_name": "paper.pdf"}],
+            "explanation": {
+                "why_these_entities": ["entity mention match"],
+                "why_this_evidence": ["ranked by citation and relation"],
+            },
             "confidence": 0.81,
             "mode": "semantic_grounded",
         }
@@ -43,9 +57,12 @@ def test_query_semantic_endpoint_contract(api_client, monkeypatch):
     assert response.status_code == 200
     body = response.json()
     assert body["mode"] == "semantic_grounded"
+    assert body["query_intent"] == "METHOD_USAGE"
     assert "answer" in body
     assert isinstance(body["evidence"], list)
     assert body["evidence"][0]["relation_type"] == "USES"
+    assert body["matched_entities"][0]["display_name"] == "Transformer"
+    assert body["explanation"]["why_this_evidence"]
     assert body["related_nodes"][0]["display_name"] == "Transformer"
 
 
@@ -77,6 +94,21 @@ def test_query_semantic_endpoint_empty_evidence_branch(api_client, monkeypatch):
     body = response.json()
     assert body["evidence"] == []
     assert "supporting evidence" in body["answer"].lower()
+
+
+def test_query_semantic_endpoint_citation_backed_chain_contract(api_client, monkeypatch):
+    import backend.app.api.query as query_api
+
+    monkeypatch.setattr(query_api, "SemanticQueryService", FakeSemanticQueryService)
+    response = api_client.post(
+        "/api/query/semantic",
+        json={"question": "Which citations support this method?", "include_citations": True},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["citations"]
+    assert body["evidence"][0]["citation_label"] == "[12]"
+    assert body["evidence"][0]["reference_entry_id"] == "ref-1"
 
 
 def test_query_semantic_endpoint_validation(api_client):

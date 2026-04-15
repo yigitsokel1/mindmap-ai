@@ -9,6 +9,8 @@ from .passage import PassageRecord
 from .relations import Relation
 from .semantic_query import (
     CitationItem,
+    MatchedEntityItem,
+    QueryExplanation,
     RelatedNodeItem,
     SemanticEvidenceItem,
     SemanticQueryAnswer,
@@ -29,5 +31,7 @@ __all__ = [
     "SemanticEvidenceItem",
     "RelatedNodeItem",
     "CitationItem",
+    "MatchedEntityItem",
+    "QueryExplanation",
     "SemanticQueryAnswer",
 ]

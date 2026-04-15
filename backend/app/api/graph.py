@@ -7,6 +7,7 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Query
 
 from backend.app.schemas.graph_response import GraphResponse
+from backend.app.schemas.node_detail import NodeDetail
 from backend.app.services.query.semantic_graph_reader import SemanticGraphFilters, SemanticGraphReader
 
 router = APIRouter()
@@ -28,16 +29,14 @@ def _normalize_node_types(node_types: Optional[List[str]]) -> List[str]:
     return normalized
 
 
-@router.get("/graph", response_model=GraphResponse)
-@router.get("/graph/semantic", response_model=GraphResponse)
-async def get_semantic_graph(
+def _build_semantic_graph(
     document_id: Optional[str] = None,
     node_types: Optional[List[str]] = Query(default=None),
     include_structural: bool = True,
     include_evidence: bool = False,
     include_citations: bool = False,
-):
-    """Return semantic graph view used as the default read path."""
+) -> GraphResponse:
+    """Build semantic graph response with active semantic reader."""
     started_at = time.perf_counter()
     try:
         reader = SemanticGraphReader()
@@ -63,3 +62,55 @@ async def get_semantic_graph(
         return result
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Error retrieving semantic graph: {exc}") from exc
+
+
+@router.get("/graph/semantic", response_model=GraphResponse)
+async def get_semantic_graph(
+    document_id: Optional[str] = None,
+    node_types: Optional[List[str]] = Query(default=None),
+    include_structural: bool = True,
+    include_evidence: bool = False,
+    include_citations: bool = False,
+) -> GraphResponse:
+    """Canonical semantic graph endpoint used by active runtime."""
+    return _build_semantic_graph(
+        document_id=document_id,
+        node_types=node_types,
+        include_structural=include_structural,
+        include_evidence=include_evidence,
+        include_citations=include_citations,
+    )
+
+
+@router.get("/graph", response_model=GraphResponse)
+async def get_graph_compat(
+    document_id: Optional[str] = None,
+    node_types: Optional[List[str]] = Query(default=None),
+    include_structural: bool = True,
+    include_evidence: bool = False,
+    include_citations: bool = False,
+) -> GraphResponse:
+    """Compatibility alias for clients that still call `/api/graph`."""
+    logger.warning("Deprecated graph alias called: prefer /api/graph/semantic")
+    return _build_semantic_graph(
+        document_id=document_id,
+        node_types=node_types,
+        include_structural=include_structural,
+        include_evidence=include_evidence,
+        include_citations=include_citations,
+    )
+
+
+@router.get("/graph/node/{node_id}", response_model=NodeDetail)
+async def get_node_detail(node_id: str, document_id: Optional[str] = None) -> NodeDetail:
+    """Return explainable inspector detail for a specific semantic node."""
+    try:
+        reader = SemanticGraphReader()
+        detail = reader.read_node_detail(node_id=node_id, document_id=document_id)
+        if detail is None:
+            raise HTTPException(status_code=404, detail="Node not found")
+        return detail
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Error retrieving node detail: {exc}") from exc
