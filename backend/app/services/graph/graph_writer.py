@@ -19,6 +19,7 @@ from backend.app.schemas.citation import CitationLinkRecord, InlineCitationRecor
 from backend.app.schemas.document_structure import ReferenceRecord, SectionRecord
 from backend.app.schemas.extraction import ExtractionResult
 from backend.app.schemas.passage import PassageRecord
+from backend.app.services.graph.writers.document_writer import DocumentStructureWriter
 from neo4j.exceptions import ServiceUnavailable, SessionExpired, TransientError
 
 logger = logging.getLogger(__name__)
@@ -33,6 +34,7 @@ class GraphWriter:
 
     def __init__(self):
         self.db = Neo4jDatabase()
+        self.document_writer = DocumentStructureWriter()
 
     def write(
         self,
@@ -178,58 +180,11 @@ class GraphWriter:
 
     def _ensure_document(self, session, document_id: str, metadata: dict | None = None):
         """MERGE a Document node with optional metadata."""
-        params = {"uid": document_id, "now": _now_iso()}
-        set_clauses = ["d.created_at = $now"]
-
-        if metadata:
-            for key in ("title", "file_name", "file_hash", "saved_file_name"):
-                if key in metadata:
-                    params[key] = metadata[key]
-                    set_clauses.append(f"d.{key} = ${key}")
-
-        on_create = ", ".join(set_clauses)
-        session.run(
-            f"MERGE (d:Document {{uid: $uid}}) "
-            f"ON CREATE SET {on_create}",
-            params,
-        )
+        self.document_writer.ensure_document(session, document_id, metadata)
 
     def _ensure_passage(self, session, passage: PassageRecord):
         """MERGE a Passage node and link to Document and optionally Section."""
-        session.run(
-            "MERGE (p:Passage {uid: $uid}) "
-            "ON CREATE SET p.text = $text, p.index = $index, "
-            "             p.page_number = $page_number, "
-            "             p.section_title = $section_title, "
-            "             p.content_type = $content_type, "
-            "             p.extraction_status = 'completed' "
-            "WITH p "
-            "MATCH (d:Document {uid: $doc_uid}) "
-            "MERGE (d)-[:HAS_PASSAGE {ordinal: $index}]->(p)",
-            {
-                "uid": passage.passage_id,
-                "text": passage.text,
-                "index": passage.index,
-                "page_number": passage.page_number,
-                "section_title": passage.section_title,
-                "content_type": getattr(passage, "content_type", "body"),
-                "doc_uid": passage.document_id,
-            },
-        )
-
-        # Link to Section if section_id is available
-        section_id = getattr(passage, "section_id", None)
-        if section_id:
-            session.run(
-                "MATCH (s:Section {uid: $section_uid}) "
-                "MATCH (p:Passage {uid: $passage_uid}) "
-                "MERGE (s)-[:HAS_PASSAGE {ordinal: $index}]->(p)",
-                {
-                    "section_uid": section_id,
-                    "passage_uid": passage.passage_id,
-                    "index": passage.index,
-                },
-            )
+        self.document_writer.ensure_passage(session, passage)
 
     def _write_entity(self, session, entity, uid: str):
         """MERGE a typed entity node by UID."""
@@ -335,8 +290,7 @@ class GraphWriter:
     def write_sections(self, sections: list[SectionRecord], document_id: str):
         """Write Section nodes and link to Document."""
         with self.db.driver.session() as session:
-            for section in sections:
-                self._ensure_section(session, section, document_id)
+            self.document_writer.write_sections(session, sections, document_id)
 
         logger.info(
             "Wrote %d sections for document %s",
@@ -347,39 +301,7 @@ class GraphWriter:
     def write_references(self, references: list[ReferenceRecord], document_id: str):
         """Write ReferenceEntry nodes and link to Document."""
         with self.db.driver.session() as session:
-            for ref in references:
-                session.run(
-                    "MERGE (r:ReferenceEntry {uid: $uid}) "
-                    "ON CREATE SET r.raw_text = $raw_text, "
-                    "             r.order = $order, "
-                    "             r.year = $year, "
-                    "             r.title_guess = $title_guess, "
-                    "             r.authors_guess = $authors_guess, "
-                    "             r.citation_key_numeric = $citation_key_numeric, "
-                    "             r.citation_key_author_year = $citation_key_author_year, "
-                    "             r.created_at = $now "
-                    "ON MATCH SET r.raw_text = $raw_text, "
-                    "             r.year = $year, "
-                    "             r.title_guess = $title_guess, "
-                    "             r.authors_guess = $authors_guess, "
-                    "             r.citation_key_numeric = $citation_key_numeric, "
-                    "             r.citation_key_author_year = $citation_key_author_year "
-                    "WITH r "
-                    "MATCH (d:Document {uid: $doc_uid}) "
-                    "MERGE (d)-[:HAS_REFERENCE {order: $order}]->(r)",
-                    {
-                        "uid": ref.reference_id,
-                        "raw_text": ref.raw_text,
-                        "order": ref.order,
-                        "year": ref.year,
-                        "title_guess": ref.title_guess,
-                        "authors_guess": ref.authors_guess,
-                        "citation_key_numeric": ref.citation_key_numeric,
-                        "citation_key_author_year": ref.citation_key_author_year,
-                        "doc_uid": document_id,
-                        "now": _now_iso(),
-                    },
-                )
+            self.document_writer.write_references(session, references, document_id)
 
         logger.info(
             "Wrote %d references for document %s",
@@ -474,27 +396,7 @@ class GraphWriter:
 
     def _ensure_section(self, session, section: SectionRecord, document_id: str):
         """MERGE a Section node and link to Document."""
-        session.run(
-            "MERGE (s:Section {uid: $uid}) "
-            "ON CREATE SET s.title = $title, s.ordinal = $ordinal, "
-            "             s.level = $level, "
-            "             s.page_start = $page_start, "
-            "             s.page_end = $page_end, "
-            "             s.created_at = $now "
-            "WITH s "
-            "MATCH (d:Document {uid: $doc_uid}) "
-            "MERGE (d)-[:HAS_SECTION {ordinal: $ordinal}]->(s)",
-            {
-                "uid": section.section_id,
-                "title": section.title,
-                "ordinal": section.ordinal,
-                "level": section.level,
-                "page_start": section.page_start,
-                "page_end": section.page_end,
-                "doc_uid": document_id,
-                "now": _now_iso(),
-            },
-        )
+        self.document_writer.ensure_section(session, section, document_id)
 
     def _find_entity_type(self, extraction: ExtractionResult, canonical_name: str) -> str:
         """Find entity type by canonical_name in the extraction."""

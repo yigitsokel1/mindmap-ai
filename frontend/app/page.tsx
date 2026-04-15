@@ -18,6 +18,7 @@ export default function Home() {
   const isPDFViewerOpen = useAppStore((state) => state.isPDFViewerOpen);
   const selectedNodeContext = useAppStore((state) => state.selectedNodeContext);
   const isGraphFocused = useAppStore((state) => state.isGraphFocused);
+  const shouldRenderGraph = isPDFViewerOpen || !!selectedNodeContext;
   
   // Memoize blur classes to prevent re-renders
   const graphBlurClass = useMemo(() => {
@@ -32,7 +33,7 @@ export default function Home() {
       <div
         className={`fixed inset-0 z-0 w-screen h-screen transition-all duration-500 ${graphBlurClass}`}
       >
-        <SemanticGraphViewer />
+        {shouldRenderGraph ? <SemanticGraphViewer /> : null}
       </div>
 
       {/* Spatial HUD Panels (Z-10+) */}

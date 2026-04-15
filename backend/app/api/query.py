@@ -1,4 +1,4 @@
-"""Semantic grounded query endpoints."""
+"""Semantic query endpoints."""
 
 import logging
 import time

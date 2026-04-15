@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { PRESET_FILTERS } from "../lib/constants";
-import type { GraphFilters, GraphPreset, NodeContext, QueryMode } from "../lib/types";
+import type { GraphFilters, GraphPreset, NodeContext } from "../lib/types";
 
 function normalizeTypes(nodeTypes?: string[]): string[] {
   return nodeTypes ? [...nodeTypes].sort((a, b) => a.localeCompare(b)) : [];
@@ -19,8 +19,8 @@ function sameFilters(a: GraphFilters, b: GraphFilters): boolean {
 interface AppState {
   // UI State
   isCommandCenterOpen: boolean;
-  activeTab: "chat" | "files";
-  queryMode: QueryMode;
+  activeTab: "query" | "files";
+  mode: "semantic";
   isPDFViewerOpen: boolean;
   selectedNodeId: string | null;
   
@@ -40,8 +40,7 @@ interface AppState {
   
   // Actions
   toggleCommandCenter: () => void;
-  setActiveTab: (tab: "chat" | "files") => void;
-  setQueryMode: (mode: QueryMode) => void;
+  setActiveTab: (tab: "query" | "files") => void;
   openPDFViewer: (url: string, docName: string, page: number) => void;
   closePDFViewer: () => void;
   setSelectedNode: (nodeId: string | null) => void;
@@ -57,8 +56,8 @@ interface AppState {
 export const useAppStore = create<AppState>((set) => ({
   // Initial State
   isCommandCenterOpen: true,
-  activeTab: "chat",
-  queryMode: "legacy_chat",
+  activeTab: "query",
+  mode: "semantic",
   isPDFViewerOpen: false,
   selectedNodeId: null,
   pdfUrl: null,
@@ -74,8 +73,7 @@ export const useAppStore = create<AppState>((set) => ({
   
   // Actions
   toggleCommandCenter: () => set((state) => ({ isCommandCenterOpen: !state.isCommandCenterOpen })),
-  setActiveTab: (tab: "chat" | "files") => set({ activeTab: tab }),
-  setQueryMode: (mode: QueryMode) => set({ queryMode: mode }),
+  setActiveTab: (tab: "query" | "files") => set({ activeTab: tab }),
   openPDFViewer: (url: string, docName: string, page: number) =>
     set({
       isPDFViewerOpen: true,

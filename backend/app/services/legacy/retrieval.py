@@ -1,8 +1,5 @@
-"""Legacy retrieval service shim.
+"""Compatibility shim for quarantined legacy retrieval implementation."""
 
-This module isolates legacy retrieval imports under services/legacy.
-"""
-
-from backend.app.services.retrieval import GraphRAGService
+from backend.app.legacy.services.legacy.retrieval import GraphRAGService
 
 __all__ = ["GraphRAGService"]

@@ -9,8 +9,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "MindMap-AI | RAG Dashboard",
-  description: "Modern RAG Dashboard for Knowledge Base Management",
+  title: "MindMap-AI | Semantic KG Research Copilot",
+  description: "Semantic Knowledge Graph-based Research Copilot",
 };
 
 export default function RootLayout({

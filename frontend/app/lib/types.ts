@@ -83,29 +83,38 @@ export interface NodeContext {
   documentName?: string;
   page?: number;
   rawText?: string;
-  details?: Record<string, unknown>;
+  details?: NodeDetail;
 }
 
-export interface ChatMessage {
+export interface NodeRelationItem {
   id: string;
-  role: "user" | "assistant";
-  content: string;
-  sources?: ChatSource[];
+  type: string;
+  name: string;
 }
 
-export interface ChatSource {
-  doc_name: string;
-  page: number;
-  score?: number;
+export interface NodeEvidenceItem {
+  text: string;
+  passage_id: string;
+  document_id: string;
 }
 
-export interface ChatResponse {
-  result: string;
-  sources?: ChatSource[];
-  related_node_ids?: string[];
+export interface NodeCitationItem {
+  title: string;
+  year: number;
 }
 
-export type QueryMode = "legacy_chat" | "semantic_query";
+export interface NodeDetail {
+  id: string;
+  type: string;
+  name: string;
+  summary: string;
+  relations: {
+    incoming: NodeRelationItem[];
+    outgoing: NodeRelationItem[];
+  };
+  evidences: NodeEvidenceItem[];
+  citations: NodeCitationItem[];
+}
 
 export interface SemanticEvidenceItem {
   relation_type: string;

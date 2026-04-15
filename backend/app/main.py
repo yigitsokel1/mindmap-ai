@@ -1,4 +1,4 @@
-"""FastAPI application entry point for the GraphRAG system.
+"""FastAPI application entry point for the Semantic KG system.
 
 This module initializes the FastAPI app, includes routers, and manages
 database connections on startup/shutdown.
@@ -34,8 +34,8 @@ async def lifespan(app: FastAPI):
 
 # Initialize FastAPI app with lifespan
 app = FastAPI(
-    title="MindMap-AI GraphRAG API",
-    description="A GraphRAG system for ingesting academic PDFs and querying knowledge graphs",
+    title="MindMap-AI Semantic KG API",
+    description="Semantic Knowledge Graph-based Research Copilot API",
     version="0.1.0",
     lifespan=lifespan
 )
@@ -69,7 +69,7 @@ async def root():
         dict: Health check message.
     """
     return {
-        "message": "MindMap-AI GraphRAG API is running",
+        "message": "MindMap-AI Semantic KG API is running",
         "status": "healthy"
     }
 

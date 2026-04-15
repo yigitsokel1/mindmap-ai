@@ -1,4 +1,4 @@
-# MindMap-AI: Semantic Knowledge Graph Workbench
+# MindMap-AI: Semantic Knowledge Graph-based Research Copilot
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue?style=for-the-badge&logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)
@@ -18,15 +18,11 @@ Primary pipeline:
 - graph read through semantic API contracts
 - semantic grounded query (`/api/query/semantic`)
 
-## Primary Path vs Legacy Path
+## Primary Runtime
 
-- Primary path:
-  - semantic ingestion (`POST /api/ingest`, default mode)
-  - semantic graph read (`GET /api/graph`)
-  - semantic grounded query (`POST /api/query/semantic`)
-- Legacy migration path:
-  - chunk/embedding retrieval and legacy chat endpoints
-  - retained for compatibility during migration only
+- semantic ingestion (`POST /api/ingest`, default mode)
+- semantic graph read (`GET /api/graph`)
+- semantic grounded query (`POST /api/query/semantic`)
 
 ## System Architecture
 
@@ -37,13 +33,13 @@ The current architecture follows a semantic graph-first model:
 3. Graph read: expose semantic graph contracts for frontend and filtering.
 4. Semantic query: deterministic, evidence-backed answers from graph traversals.
 
-Legacy GraphRAG retrieval remains available only as a migration compatibility path.
+Legacy code is quarantined and excluded from active runtime paths.
 
 ## 🛠 Tech Stack
 
 | Component | Technology | Description |
 |---------|------------|-------------|
-| **LLM (Chat)** | Llama-3.3-70b (Groq) | Yüksek hızlı çıkarım ve JSON modu desteği |
+| **LLM (Copilot)** | Llama-3.3-70b (Groq) | Yüksek hızlı çıkarım ve JSON modu desteği |
 | **Embeddings** | OpenAI text-embedding-3-small | Chunk'lar için vektör oluşturma |
 | **Backend Framework** | FastAPI | Asenkron API yönetimi |
 | **Orchestration** | LangChain | LLM zincirleri ve Graph transformasyonları |
@@ -56,7 +52,7 @@ Legacy GraphRAG retrieval remains available only as a migration compatibility pa
 
 - Python 3.10+  
 - Neo4j Database (URI, Username, Password)  
-- Groq API Key (for LLM/chat)  
+- Groq API Key (for LLM/copilot)  
 - OpenAI API Key (for embeddings)  
 
 ### 1. Clone & Install
@@ -99,33 +95,30 @@ uvicorn backend.app.main:app --reload
 
 ## ⚡ API Usage
 
-### Current Migration Status
+### Current Runtime Status
 
 - semantic ingestion = **primary**
-- semantic graph read = **new primary read path**
-- semantic grounded query = **new primary QA path**
-- legacy chat/vector retrieval = **migration mode**
+- semantic graph read = **primary**
+- semantic grounded query = **primary**
 
-### Frontend Migration Note (Sprint 10)
+### Frontend Status
 
 - Frontend graph viewer now uses semantic `GET /api/graph` response contract (`nodes`, `edges`, `meta`).
 - Graph exploration includes preset modes: **Semantic**, **Evidence**, **Citation**.
 - Document-focused filtering is wired into graph fetch filters (`document_id`, include toggles).
-- Command Center now supports **Legacy Chat** and **Semantic Query** modes.
-- Semantic Query mode renders evidence-first answers and supports inspector page jump from evidence cards.
+- Query panel uses a single **Semantic Query** mode.
+- Semantic Query renders evidence-first answers and supports inspector page jump from evidence cards.
 
 ### 1. Ingest PDF
 
 Endpoint: `POST /api/ingest`  
 Mode options:
 - `mode=semantic` (default, primary)
-- `mode=legacy` (fallback chunk/embedding path)
 
 ### 2. Read Graph
 
 - `GET /api/graph` → semantic default response contract (`nodes`, `edges`, `meta`)
 - `GET /api/graph/semantic` → semantic graph (same contract)
-- `GET /api/graph/legacy` → legacy `Document/Chunk` graph (`nodes`, `links`)
 
 Semantic filters on `GET /api/graph`:
 - `document_id`
@@ -154,10 +147,9 @@ Response contract:
 - `confidence`
 - `mode = "semantic_grounded"`
 
-### 4. Legacy Chat (Migration Path)
+### 4. Research Copilot Query
 
-Endpoint: `POST /api/chat`  
-Status: current chat path uses **legacy retrieval** and remains available for backward compatibility.
+Use `POST /api/query/semantic` for query/copilot interactions.
 
 ## 📊 Active Graph Docs
 
@@ -203,7 +195,7 @@ Semantic query endpoint contract checks include:
 You can also run ingestion manually:
 
 ```bash
-python run_ingest.py
+python tools/legacy/run_ingest.py
 ```
 
 Edit `PDF_PATH` in the script to process different files.
@@ -214,7 +206,7 @@ This script is a legacy/debug helper.
 Test queries interactively:
 
 ```bash
-python run_query.py
+python tools/legacy/run_query.py
 ```
 
 This script calls the current legacy retrieval path for diagnostics.
