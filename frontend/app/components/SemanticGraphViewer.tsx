@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentProps, type MutableRefObject } from "react";
 import ForceGraph3D from "react-force-graph-3d";
 import { fetchSemanticGraph, toRenderData } from "../lib/api";
 import type { GraphNode, GraphRenderData } from "../lib/types";
@@ -36,8 +36,19 @@ function asNumber(value: unknown): number | undefined {
   return undefined;
 }
 
+type CameraPosition = { x: number; y: number; z: number };
+
+interface GraphViewerHandle {
+  cameraPosition: (
+    position: CameraPosition,
+    lookAt?: CameraPosition,
+    ms?: number
+  ) => void;
+}
+
 export default function SemanticGraphViewer() {
-  const graphRef = useRef<any>(null);
+  const forceGraphRef = useRef<unknown>(undefined) as NonNullable<ComponentProps<typeof ForceGraph3D>["ref"]>;
+  const graphRef = forceGraphRef as unknown as MutableRefObject<GraphViewerHandle | null>;
   const [graphData, setGraphData] = useState<GraphRenderData>({ nodes: [], links: [] });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -144,7 +155,8 @@ export default function SemanticGraphViewer() {
   return (
     <div className="w-screen h-screen fixed inset-0 z-0 bg-black">
       <ForceGraph3D
-        ref={graphRef}
+        // @ts-expect-error - upstream ref generics are broader than local graph node typing
+        ref={forceGraphRef}
         graphData={graphData}
         backgroundColor="#000000"
         nodeColor={(node: GraphNode) => NODE_COLORS[node.label] || "#94a3b8"}

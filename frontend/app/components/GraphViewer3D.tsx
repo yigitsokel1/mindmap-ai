@@ -1,11 +1,50 @@
 'use client';
 
-import { useEffect, useRef, useMemo, useState } from 'react';
+// Legacy compatibility viewer: this component still assumes Document/Chunk-centric
+// behaviors and is not the primary semantic graph exploration surface.
+
+import { useEffect, useRef, useMemo, useState, type ComponentProps, type MutableRefObject } from 'react';
 import ForceGraph3D from 'react-force-graph-3d';
 import * as THREE from 'three';
 import { useAppStore } from '../store/useAppStore';
 import { API_ENDPOINTS } from '../lib/constants';
-import type { GraphNode, GraphLink, GraphData } from '../lib/types';
+import type { GraphNode, GraphData } from '../lib/types';
+
+type GraphNodeWithVelocity = GraphNode & { vx?: number; vy?: number; vz?: number };
+type GraphCameraPosition = { x: number; y: number; z: number };
+type ForceSimulationLike = {
+  alpha: {
+    (): number;
+    (value: number): void;
+  };
+  alphaDecay: (value: number) => void;
+  alphaTarget: (value: number) => void;
+  velocityDecay?: (value: number) => void;
+};
+type ForceLike = { strength?: (value: number) => void; distance?: (value: number) => void };
+type ControlsLike = {
+  autoRotate: boolean;
+  autoRotateSpeed: number;
+  enabled: boolean;
+  enableDamping: boolean;
+  target: THREE.Vector3;
+  object?: { position: { set: (x: number, y: number, z: number) => void; toArray: () => number[] } };
+  update: () => void;
+};
+type GraphViewerRef = {
+  scene: () => THREE.Scene | null;
+  controls: () => ControlsLike | null;
+  cameraPosition: {
+    (): GraphCameraPosition;
+    (x: number, y: number, z: number): void;
+    (position: GraphCameraPosition): void;
+  };
+  d3Force: {
+    (): ForceSimulationLike | null;
+    (name: string): ForceLike | null;
+  };
+  d3ReheatSimulation: () => void;
+};
 
 // Helper function to create glow texture (outside component to prevent recreation)
 const createGlowTexture = (): THREE.Texture | null => {
@@ -35,7 +74,8 @@ const createGlowTexture = (): THREE.Texture | null => {
 };
 
 export default function GraphViewer3D() {
-  const graphRef = useRef<any>(null);
+  const forceGraphRef = useRef<unknown>(undefined) as NonNullable<ComponentProps<typeof ForceGraph3D>['ref']>;
+  const graphRef = forceGraphRef as unknown as MutableRefObject<GraphViewerRef | null>;
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +96,7 @@ export default function GraphViewer3D() {
   const activeTargetNodeRef = useRef<{ id: string; label: string; distance: number } | null>(null);
   const focusPeriodActiveRef = useRef(false);
   const lockedTargetPositionRef = useRef<{ x: number; y: number; z: number } | null>(null);
+  const velocityResetTickRef = useRef(0);
 
   // Memoize glow texture - created once and reused
   const glowTexture = useMemo(() => createGlowTexture(), []);
@@ -75,18 +116,18 @@ export default function GraphViewer3D() {
           throw new Error(`Failed to fetch graph: ${response.statusText}`);
         }
         
-        const data = await response.json();
+        const data = (await response.json()) as GraphData;
         console.log('Graph data loaded:', {
           nodes: data.nodes?.length || 0,
           links: data.links?.length || 0,
-          documents: data.nodes?.filter((n: any) => n.label === 'Document').length || 0,
-          chunks: data.nodes?.filter((n: any) => n.label === 'Chunk').length || 0,
+          documents: data.nodes?.filter((n: GraphNode) => n.label === 'Document').length || 0,
+          chunks: data.nodes?.filter((n: GraphNode) => n.label === 'Chunk').length || 0,
         });
         
         // Store initial node positions to prevent drift
         if (data.nodes) {
           nodeInitialPositionsRef.current.clear();
-          data.nodes.forEach((node: any) => {
+          data.nodes.forEach((node: GraphNode) => {
             if (node.x !== undefined && node.y !== undefined && node.z !== undefined) {
               nodeInitialPositionsRef.current.set(node.id, {
                 x: node.x,
@@ -255,7 +296,7 @@ export default function GraphViewer3D() {
         controls.autoRotate = false;
         controls.update();
       }
-    } catch (e) {
+    } catch {
       // Ignore errors - controls might not be ready
     }
     
@@ -377,7 +418,7 @@ export default function GraphViewer3D() {
           controls.enabled = false;
           controls.enableDamping = false;
         }
-      } catch (e) {
+      } catch {
         // Ignore errors
       }
       
@@ -433,7 +474,6 @@ export default function GraphViewer3D() {
       
       const duration = 4000; // Increased from 3000ms to 4000ms for smoother animation (prevents teleportation)
       const startTime = Date.now();
-      let lastFrameTime = startTime;
       
       const animate = () => {
         if (!graphRef.current) {
@@ -454,9 +494,6 @@ export default function GraphViewer3D() {
           : 1 - Math.pow(-2 * progress + 2, 3) / 2;
         
         // Track frame time to prevent skipping frames
-        const deltaTime = now - lastFrameTime;
-        lastFrameTime = now;
-        
         const currentPos = {
           x: startPos.x + (targetPos.x - startPos.x) * eased,
           y: startPos.y + (targetPos.y - startPos.y) * eased,
@@ -548,8 +585,8 @@ export default function GraphViewer3D() {
             // Fallback to cameraPosition method if controls not available
             try {
               graphRef.current.cameraPosition(currentPos.x, currentPos.y, currentPos.z);
-            } catch (e) {
-              console.error('[GraphViewer3D] cameraPosition method error:', e);
+            } catch (error) {
+              console.error('[GraphViewer3D] cameraPosition method error:', error);
             }
           }
         } catch (error) {
@@ -568,7 +605,7 @@ export default function GraphViewer3D() {
               controls.target.set(x, y, z);
               controls.update();
             }
-          } catch (e) {
+          } catch {
             // Ignore errors
           }
           
@@ -621,8 +658,8 @@ export default function GraphViewer3D() {
               
               console.log('[GraphViewer3D] ✓ Controls configured, autorotate will enable in 2 frames');
             }
-          } catch (e) {
-            console.error('[GraphViewer3D] Error configuring controls:', e);
+          } catch (error) {
+            console.error('[GraphViewer3D] Error configuring controls:', error);
           }
           
           // STEP 2.4: Update state flags
@@ -647,8 +684,8 @@ export default function GraphViewer3D() {
                   
                   console.log('[GraphViewer3D] ✓ Autorotate enabled after stabilization');
                 }
-              } catch (e) {
-                console.error('[GraphViewer3D] Error enabling autorotate:', e);
+              } catch (error) {
+                console.error('[GraphViewer3D] Error enabling autorotate:', error);
               }
               
               // Update state flag
@@ -789,7 +826,7 @@ export default function GraphViewer3D() {
             let chunkNodeRef: GraphNode | null = null;
             
             for (const nodeId of highlightedNodeIds) {
-              const foundNode = graphData.nodes.find((node: any) => node.id === nodeId) || null;
+              const foundNode = graphData.nodes.find((node: GraphNode) => node.id === nodeId) || null;
               if (foundNode) {
                 if (foundNode.label === 'Document') {
                   documentNodeRef = foundNode;
@@ -920,7 +957,7 @@ export default function GraphViewer3D() {
       // Note: Don't reset isAnimating/autoRotateEnabled in cleanup
       // Let animation complete naturally, state will be updated properly
     };
-  }, [highlightedNodeIds, graphData, isLoading]); // Removed isAnimating from dependencies
+  }, [highlightedNodeIds, graphData, isLoading, isAnimating]);
 
   // Memoized node rendering function
   const nodeThreeObject = useMemo(() => {
@@ -1018,7 +1055,8 @@ export default function GraphViewer3D() {
   return (
     <div className="w-screen h-screen fixed inset-0 z-0 bg-black">
       <ForceGraph3D
-        ref={graphRef}
+        // @ts-expect-error - upstream ref generics are broader than local graph node typing
+        ref={forceGraphRef}
         graphData={graphData}
         nodeThreeObject={nodeThreeObject}
         nodeThreeObjectExtend={true}
@@ -1030,16 +1068,13 @@ export default function GraphViewer3D() {
         showNavInfo={false}
         enableNavigationControls={true}
         enableNodeDrag={false}
-        // @ts-ignore - autoRotate prop exists but types may be outdated
         autoRotate={autoRotateEnabled && !isAnimating}
         autoRotateSpeed={0.5}
         controlType="orbit"
         cameraPosition={{ x: 0, y: 0, z: 250 }}
         cooldownTicks={Infinity}
         warmupTicks={100}
-        // @ts-ignore - d3AlphaDecay prop exists but types may be outdated
         d3AlphaDecay={0}
-        // @ts-ignore - d3VelocityDecay prop exists but types may be outdated
         d3VelocityDecay={0.9}
         onEngineTick={() => {
           if (!graphRef.current) return;
@@ -1049,7 +1084,7 @@ export default function GraphViewer3D() {
           // This allows us to get real-time node positions
           try {
             if (graphData && graphData.nodes) {
-              graphData.nodes.forEach((node: any) => {
+              graphData.nodes.forEach((node: GraphNode) => {
                 if (node.id && (node.x !== undefined || node.y !== undefined || node.z !== undefined)) {
                   nodePositionsRef.current.set(node.id, {
                     x: node.x ?? 0,
@@ -1059,7 +1094,7 @@ export default function GraphViewer3D() {
                 }
               });
             }
-          } catch (e) {
+          } catch {
             // Ignore errors
           }
           
@@ -1078,7 +1113,7 @@ export default function GraphViewer3D() {
                 if (!latestPos || (latestPos.x === 0 && latestPos.y === 0 && latestPos.z === 0)) {
                   try {
                     if (graphData && graphData.nodes) {
-                      const nodeFromGraph = graphData.nodes.find((n: any) => n.id === activeTargetNodeRef.current!.id);
+                      const nodeFromGraph = graphData.nodes.find((n: GraphNode) => n.id === activeTargetNodeRef.current!.id);
                       if (nodeFromGraph && (nodeFromGraph.x !== undefined || nodeFromGraph.y !== undefined || nodeFromGraph.z !== undefined)) {
                         latestPos = {
                           x: nodeFromGraph.x ?? 0,
@@ -1088,7 +1123,7 @@ export default function GraphViewer3D() {
                         nodePositionsRef.current.set(activeTargetNodeRef.current.id, latestPos);
                       }
                     }
-                  } catch (e) {
+                  } catch {
                     // Ignore errors
                   }
                 }
@@ -1099,7 +1134,7 @@ export default function GraphViewer3D() {
                   controls.target.set(latestPos.x, latestPos.y, latestPos.z);
                 }
               }
-            } catch (e) {
+            } catch {
               // Ignore errors silently during animation
             }
           }
@@ -1108,7 +1143,9 @@ export default function GraphViewer3D() {
           if (simulation) {
             // CRITICAL: Very high velocityDecay (0.9) to prevent nodes from drifting
             // This keeps nodes almost stationary but still allows subtle movement
-            (simulation as any).velocityDecay(1);
+            if (typeof simulation.velocityDecay === 'function') {
+              simulation.velocityDecay(1);
+            }
             
             // CRITICAL: Keep simulation running continuously - NO DECAY
             // This prevents equilibrium and ensures infinite movement
@@ -1122,12 +1159,12 @@ export default function GraphViewer3D() {
             }
             
             // Periodically reset node velocities to prevent drift - VERY AGGRESSIVE
-            const tickCount = (graphRef.current as any).__velocityResetTick || 0;
+            const tickCount = velocityResetTickRef.current;
             if (tickCount % 3 === 0) {
               // Every 3 ticks, aggressively reduce node velocities to prevent drift
               const graphState = graphData;
               if (graphState.nodes) {
-                graphState.nodes.forEach((node: any) => {
+                graphState.nodes.forEach((node: GraphNodeWithVelocity) => {
                   // Reduce velocity by 95% to keep nodes in place
                   if (node.vx !== undefined) node.vx *= 0.05;
                   if (node.vy !== undefined) node.vy *= 0.05;
@@ -1135,33 +1172,32 @@ export default function GraphViewer3D() {
                 });
               }
             }
-            (graphRef.current as any).__velocityResetTick = (tickCount + 1) % 3;
+            velocityResetTickRef.current = (tickCount + 1) % 3;
           }
           
           // Configure charge force - balanced for visibility
           const chargeForce = graphRef.current.d3Force('charge');
           if (chargeForce) {
-            chargeForce.strength(-800); // Reduced for better node separation
+            chargeForce.strength?.(-800); // Reduced for better node separation
           }
           
           // Configure link distance for proper spacing
           const linkForce = graphRef.current.d3Force('link');
           if (linkForce) {
-            linkForce.distance(90); // Increased for better visibility
+            linkForce.distance?.(90); // Increased for better visibility
           }
           
           // CRITICAL: Maximum strength center force to prevent nodes from drifting away
           const centerForce = graphRef.current.d3Force('center');
           if (centerForce) {
-            centerForce.strength(2.0); // Maximum center force to keep nodes centered
-            centerForce.x(0); // Center X
-            centerForce.y(0); // Center Y
-            centerForce.z(0); // Center Z
+            centerForce.strength?.(2.0); // Maximum center force to keep nodes centered
           }
           
           // CRITICAL: Maximum velocityDecay to prevent drift
           if (simulation) {
-            (simulation as any).velocityDecay(1); // Very high decay = almost no drift
+            if (typeof simulation.velocityDecay === 'function') {
+              simulation.velocityDecay(1); // Very high decay = almost no drift
+            }
           }
           
           // ========================================
@@ -1205,7 +1241,7 @@ export default function GraphViewer3D() {
                 }
               }
             }
-          } catch (e) {
+          } catch {
             // Ignore errors silently - controls might not be ready yet
           }
         }}
@@ -1219,12 +1255,14 @@ export default function GraphViewer3D() {
                   graphRef.current.d3ReheatSimulation();
                   const simulation = graphRef.current.d3Force();
                   if (simulation) {
-                    (simulation as any).velocityDecay(0.5);
+                    if (typeof simulation.velocityDecay === 'function') {
+                      simulation.velocityDecay(0.5);
+                    }
                     simulation.alpha(0.25);
                     simulation.alphaDecay(0);
                     simulation.alphaTarget(0.2);
                   }
-                } catch (e) {
+                } catch {
                   // Ignore errors
                 }
               }

@@ -7,10 +7,17 @@ import { useAppStore } from "../store/useAppStore";
 import ChatBubble from "./ChatBubble";
 import FileLibrary from "./FileLibrary";
 import { API_ENDPOINTS, PRESET_LABELS } from "../lib/constants";
-import type { ChatMessage, ChatResponse, GraphPreset } from "../lib/types";
+import type {
+  ChatMessage,
+  ChatResponse,
+  GraphPreset,
+  SemanticEvidenceItem,
+  SemanticQueryResponse,
+} from "../lib/types";
 
 export default function CommandCenter() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [semanticResult, setSemanticResult] = useState<SemanticQueryResponse | null>(null);
   const [inputMessage, setInputMessage] = useState("");
   const [isLoadingResponse, setIsLoadingResponse] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -29,6 +36,9 @@ export default function CommandCenter() {
     updateGraphFilters,
     selectedDocumentId,
     setSelectedDocumentId,
+    queryMode,
+    setQueryMode,
+    setSelectedNodeContext,
   } = useAppStore();
 
   // Auto-scroll to bottom
@@ -47,62 +57,75 @@ export default function CommandCenter() {
   const handleSendMessage = async () => {
     if (!inputMessage.trim() || isLoadingResponse) return;
 
-    const userMessage: ChatMessage = {
-      id: Date.now().toString(),
-      role: "user",
-      content: inputMessage,
-    };
-
-    setMessages((prev) => [...prev, userMessage]);
+    if (queryMode === "legacy_chat") {
+      const userMessage: ChatMessage = {
+        id: Date.now().toString(),
+        role: "user",
+        content: inputMessage,
+      };
+      setMessages((prev) => [...prev, userMessage]);
+    }
     setInputMessage("");
     setIsLoadingResponse(true);
 
     try {
-      const response = await fetch(API_ENDPOINTS.CHAT, {
+      const response = await fetch(
+        queryMode === "legacy_chat" ? API_ENDPOINTS.CHAT : API_ENDPOINTS.QUERY_SEMANTIC,
+        {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: inputMessage }),
-      });
+          body: JSON.stringify(
+            queryMode === "legacy_chat"
+              ? { question: inputMessage }
+              : {
+                  question: inputMessage,
+                  document_id: selectedDocumentId || undefined,
+                  include_citations: true,
+                }
+          ),
+        }
+      );
 
       if (!response.ok) {
         throw new Error(`Failed to get response: ${response.statusText}`);
       }
 
-      const data: ChatResponse = await response.json();
-
-      console.log('[CommandCenter] Chat response received:', {
-        hasResult: !!data.result,
-        sourcesCount: data.sources?.length || 0,
-        relatedNodeIds: data.related_node_ids || [],
-        relatedNodeIdsCount: data.related_node_ids?.length || 0,
-        relatedNodeIdsSample: data.related_node_ids?.slice(0, 5).map(id => id.substring(0, 30) + '...') || [],
-        sources: data.sources?.slice(0, 3).map(s => ({ doc_name: s.doc_name, page: s.page })) || []
-      });
-
-      const assistantMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: data.result || "No response received",
-        sources: data.sources || [],
-      };
-
-      setMessages((prev) => [...prev, assistantMessage]);
-
-      // Update highlighted node IDs (Smart Focus) - focus on first node (primary source)
-      if (data.related_node_ids && data.related_node_ids.length > 0) {
-        console.log('[CommandCenter] Setting highlighted nodes:', data.related_node_ids);
-        // Highlight all related nodes but focus camera on the first one
-        setHighlightedNodes(data.related_node_ids);
+      if (queryMode === "legacy_chat") {
+        const data: ChatResponse = await response.json();
+        const assistantMessage: ChatMessage = {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: data.result || "No response received",
+          sources: data.sources || [],
+        };
+        setMessages((prev) => [...prev, assistantMessage]);
+        if (data.related_node_ids && data.related_node_ids.length > 0) {
+          setHighlightedNodes(data.related_node_ids);
+        }
       } else {
-        console.warn('[CommandCenter] No related_node_ids in response');
+        const data: SemanticQueryResponse = await response.json();
+        setSemanticResult(data);
+        const highlighted = data.related_nodes.map((node) => node.id);
+        setHighlightedNodes(highlighted);
       }
     } catch (error) {
-      const errorMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: `Error: ${error instanceof Error ? error.message : "Unknown error occurred"}`,
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+      if (queryMode === "legacy_chat") {
+        const errorMessage: ChatMessage = {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: `Error: ${error instanceof Error ? error.message : "Unknown error occurred"}`,
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+      } else {
+        setSemanticResult({
+          answer: `Error: ${error instanceof Error ? error.message : "Unknown error occurred"}`,
+          evidence: [],
+          related_nodes: [],
+          citations: [],
+          confidence: 0,
+          mode: "semantic_grounded",
+        });
+      }
     } finally {
       setIsLoadingResponse(false);
     }
@@ -118,6 +141,34 @@ export default function CommandCenter() {
   const handleCitationClick = (docName: string, page: number) => {
     const pdfUrl = API_ENDPOINTS.STATIC(docName);
     openPDFViewer(pdfUrl, docName, page);
+    setSelectedNodeContext({
+      id: `citation-${docName}-${page}`,
+      label: "Citation",
+      title: `${docName} · page ${page}`,
+      documentName: docName,
+      page,
+    });
+  };
+
+  const handleEvidenceClick = (evidence: SemanticEvidenceItem) => {
+    const docName = evidence.document_name || evidence.document_id || "Unknown";
+    if (evidence.page && evidence.document_name) {
+      const pdfUrl = API_ENDPOINTS.STATIC(evidence.document_name);
+      openPDFViewer(pdfUrl, evidence.document_name, evidence.page);
+    }
+    setSelectedNodeContext({
+      id: evidence.related_node_ids.join("|") || `evidence-${Date.now()}`,
+      label: evidence.relation_type,
+      title: evidence.snippet || "Grounded evidence",
+      documentName: docName,
+      page: evidence.page || undefined,
+      rawText: evidence.snippet,
+      details: {
+        relation_type: evidence.relation_type,
+        related_node_ids: evidence.related_node_ids,
+        citation_label: evidence.citation_label,
+      },
+    });
   };
 
   const handlePresetChange = (preset: GraphPreset) => {
@@ -203,6 +254,30 @@ export default function CommandCenter() {
       {/* Content */}
       <div className="flex-1 overflow-hidden flex flex-col">
         <div className="p-3 border-b border-white/10 space-y-2">
+          {activeTab === "chat" && (
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setQueryMode("legacy_chat")}
+                className={`px-2 py-1 rounded text-[10px] font-mono border transition-colors ${
+                  queryMode === "legacy_chat"
+                    ? "border-amber-400 text-amber-300 bg-amber-500/10"
+                    : "border-white/10 text-white/70 hover:bg-white/5"
+                }`}
+              >
+                Legacy Chat
+              </button>
+              <button
+                onClick={() => setQueryMode("semantic_query")}
+                className={`px-2 py-1 rounded text-[10px] font-mono border transition-colors ${
+                  queryMode === "semantic_query"
+                    ? "border-cyan-400 text-cyan-300 bg-cyan-500/10"
+                    : "border-white/10 text-white/70 hover:bg-white/5"
+                }`}
+              >
+                Semantic Query
+              </button>
+            </div>
+          )}
           <p className="text-[10px] font-mono uppercase tracking-wider text-white/60">
             Graph Mode
           </p>
@@ -253,24 +328,66 @@ export default function CommandCenter() {
         </div>
         {activeTab === "chat" ? (
           <>
-            {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
-              {messages.length === 0 && (
+              {queryMode === "legacy_chat" && messages.length === 0 && (
                 <div className="text-center py-8">
                   <p className="text-xs text-amber-300/80 font-mono mb-2">LEGACY CHAT MODE</p>
                   <p className="text-xs text-white/50 font-mono">INITIALIZE QUERY</p>
                 </div>
               )}
+              {queryMode === "semantic_query" && !semanticResult && !isLoadingResponse && (
+                <div className="text-center py-8">
+                  <p className="text-xs text-cyan-300/80 font-mono mb-2">SEMANTIC QUERY MODE</p>
+                  <p className="text-xs text-white/50 font-mono">ASK GRAPH-BACKED QUESTION</p>
+                </div>
+              )}
 
-              {messages.map((message) => (
-                <ChatBubble
-                  key={message.id}
-                  role={message.role}
-                  content={message.content}
-                  sources={message.sources}
-                  onCitationClick={handleCitationClick}
-                />
-              ))}
+              {queryMode === "legacy_chat" &&
+                messages.map((message) => (
+                  <ChatBubble
+                    key={message.id}
+                    role={message.role}
+                    content={message.content}
+                    sources={message.sources}
+                    onCitationClick={handleCitationClick}
+                  />
+                ))}
+
+              {queryMode === "semantic_query" && semanticResult && (
+                <div className="space-y-3">
+                  <div className="bg-black/40 border-l-2 border-cyan-500 rounded px-3 py-2">
+                    <p className="text-[10px] uppercase tracking-wide text-cyan-300 font-mono mb-1">
+                      Grounded Answer · confidence {semanticResult.confidence.toFixed(2)}
+                    </p>
+                    <p className="text-xs text-white/90 font-mono leading-relaxed">{semanticResult.answer}</p>
+                  </div>
+                  <div className="space-y-2">
+                    {semanticResult.evidence.map((item, idx) => (
+                      <button
+                        key={`${item.related_node_ids.join("-")}-${idx}`}
+                        onClick={() => handleEvidenceClick(item)}
+                        className="w-full text-left bg-black/30 border border-white/10 rounded px-3 py-2 hover:bg-white/5 transition-colors"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-[10px] uppercase font-mono text-purple-300">{item.relation_type}</p>
+                          {item.citation_label && (
+                            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded border border-cyan-500/40 text-cyan-300">
+                              {item.citation_label}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-white/80 font-mono mt-1 line-clamp-3">
+                          {item.snippet || "No snippet available."}
+                        </p>
+                        <p className="text-[10px] text-white/60 font-mono mt-1">
+                          {item.document_name || item.document_id || "Unknown document"}
+                          {item.page ? ` · page ${item.page}` : ""}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {isLoadingResponse && (
                 <div className="flex gap-2">
@@ -292,7 +409,6 @@ export default function CommandCenter() {
                   </div>
                 </div>
               )}
-
               <div ref={messagesEndRef} />
             </div>
 

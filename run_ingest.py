@@ -23,6 +23,7 @@ PDF_PATH = "data/attention-is-all-you-need-paper.pdf"
 def main():
     """Run the ingestion service to process a PDF."""
     pdf_path = Path(PDF_PATH)
+    print("Legacy ingestion diagnostic script. Primary path is POST /api/ingest (semantic mode).")
     
     # Check if PDF file exists
     if not pdf_path.exists():

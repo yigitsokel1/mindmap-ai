@@ -15,7 +15,9 @@ export default function Inspector() {
     setSelectedNodeContext,
   } = useAppStore();
 
-  const pdfUrlWithPage = pdfPage && pdfUrl ? `${pdfUrl}#page=${pdfPage}` : pdfUrl;
+  const pdfUrlWithPage: string | undefined = pdfUrl
+    ? (pdfPage ? `${pdfUrl}#page=${pdfPage}` : pdfUrl)
+    : undefined;
 
   return (
     <AnimatePresence>

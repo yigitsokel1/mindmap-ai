@@ -1,7 +1,7 @@
-"""GraphRAG retrieval service with vector search and document filtering.
+"""Legacy GraphRAG retrieval service with vector search and document filtering.
 
-This module provides GraphRAGService for querying the knowledge graph
-using vector similarity search with optional document filtering.
+This module is a migration compatibility path and is not the primary
+semantic query flow. The active QA path is `/api/query/semantic`.
 """
 
 import os

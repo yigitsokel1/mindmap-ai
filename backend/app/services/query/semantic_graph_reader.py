@@ -100,12 +100,10 @@ class SemanticGraphReader:
         WHERE any(label IN labels(n) WHERE label IN $labels)
           AND (
             $document_id IS NULL
-            OR n.id = $document_id
-            OR n.document_id = $document_id
-            OR n.doc_id = $document_id
+            OR any(key IN ['uid', 'id', 'document_id', 'doc_id'] WHERE n[key] = $document_id)
             OR EXISTS {
               MATCH (n)-[*1..4]-(d:Document)
-              WHERE d.id = $document_id OR d.uid = $document_id OR d.name = $document_id
+              WHERE any(key IN ['uid', 'id', 'name'] WHERE d[key] = $document_id)
             }
           )
         RETURN DISTINCT n
@@ -114,7 +112,6 @@ class SemanticGraphReader:
         records, _, _ = self.db.driver.execute_query(  # type: ignore[union-attr]
             query,
             {"labels": list(labels), "document_id": document_id, "limit": limit},
-            database_="neo4j",
         )
         return records
 
@@ -134,7 +131,6 @@ class SemanticGraphReader:
         records, _, _ = self.db.driver.execute_query(  # type: ignore[union-attr]
             query,
             {"node_ids": node_ids},
-            database_="neo4j",
         )
 
         edges: List[GraphEdge] = []

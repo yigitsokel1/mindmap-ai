@@ -4,6 +4,7 @@ import logging
 import os
 import shutil
 import tempfile
+import time
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
@@ -19,7 +20,8 @@ async def ingest(
     mode: str = "semantic",
 ):
     """Ingest a PDF file into either semantic or legacy pipelines."""
-    logger = logging.getLogger(__name__)
+    logger = logging.getLogger("uvicorn.error")
+    started_at = time.perf_counter()
 
     if not file.filename:
         raise HTTPException(status_code=400, detail="No file provided")
@@ -36,6 +38,7 @@ async def ingest(
     )
 
     try:
+        logger.info("Ingest request accepted: file=%s mode=%s", file.filename, mode)
         with open(temp_file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
@@ -43,7 +46,16 @@ async def ingest(
         if mode == "legacy":
             service = IngestionService()
             try:
+                logger.info("Legacy ingestion started: file=%s", original_filename)
                 result = service.ingest_pdf(temp_file_path, original_filename)
+                elapsed = time.perf_counter() - started_at
+                logger.info(
+                    "Legacy ingestion finished: file=%s status=%s doc_id=%s elapsed=%.2fs",
+                    original_filename,
+                    result.get("status"),
+                    result.get("doc_id"),
+                    elapsed,
+                )
                 if result.get("saved_file_name"):
                     result["static_url"] = f"/static/{result['saved_file_name']}"
                 return result
@@ -51,7 +63,16 @@ async def ingest(
                 service.close()
 
         service = SemanticIngestionService()
+        logger.info("Semantic ingestion started: file=%s", original_filename)
         result = service.ingest_pdf(temp_file_path, original_filename)
+        elapsed = time.perf_counter() - started_at
+        logger.info(
+            "Semantic ingestion finished: file=%s status=%s document_id=%s elapsed=%.2fs",
+            original_filename,
+            result.status,
+            result.document_id,
+            elapsed,
+        )
         response = result.to_dict()
         if result.saved_file_name:
             response["static_url"] = f"/static/{result.saved_file_name}"

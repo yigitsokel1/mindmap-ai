@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from backend.app.api.extract import router as extract_router
 from backend.app.api.graph import router as graph_router
+from backend.app.api.query import router as query_router
 
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -27,5 +28,6 @@ def api_client() -> TestClient:
     app = FastAPI()
     app.include_router(extract_router, prefix="/api")
     app.include_router(graph_router, prefix="/api")
+    app.include_router(query_router, prefix="/api")
     with TestClient(app) as client:
         yield client

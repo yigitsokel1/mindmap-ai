@@ -5,52 +5,55 @@ import { FileText, Upload, Loader2 } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
 import { API_ENDPOINTS } from "../lib/constants";
 import { fetchSemanticGraph, getPresetFilters } from "../lib/api";
-import type { Document } from "../lib/types";
+import type { Document, GraphNode } from "../lib/types";
 
 export default function FileLibrary() {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
+  const [isServerProcessing, setIsServerProcessing] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const { openPDFViewer, setSelectedDocumentId } = useAppStore();
+
+  const refreshDocuments = async () => {
+    const data = await fetchSemanticGraph(
+      getPresetFilters("semantic", {
+        node_types: ["Document"],
+        include_structural: true,
+        include_evidence: false,
+        include_citations: false,
+      })
+    );
+
+    const docMap = new Map<string, Document>();
+    if (data.nodes) {
+      data.nodes.forEach((node: GraphNode) => {
+        if (node.label === "Document" && node.id) {
+          const fileName =
+            node.display_name ||
+            (node.properties?.file_name as string | undefined) ||
+            (node.properties?.title as string | undefined);
+
+          if (!fileName) return;
+
+          if (!docMap.has(node.id)) {
+            docMap.set(node.id, {
+              id: node.id,
+              name: fileName,
+            });
+          }
+        }
+      });
+    }
+    setDocuments(Array.from(docMap.values()));
+  };
 
   // Fetch documents from graph data
   useEffect(() => {
     const fetchDocuments = async () => {
       try {
         setIsLoading(true);
-        const data = await fetchSemanticGraph(
-          getPresetFilters("semantic", {
-            node_types: ["Document"],
-            include_structural: true,
-            include_evidence: false,
-            include_citations: false,
-          })
-        );
-        
-        // Extract unique Document nodes
-        const docMap = new Map<string, Document>();
-        if (data.nodes) {
-          data.nodes.forEach((node: any) => {
-            if (node.label === "Document" && node.id) {
-              const fileName =
-                node.display_name ||
-                (node.properties?.file_name as string | undefined) ||
-                (node.properties?.title as string | undefined);
-
-              if (!fileName) return;
-
-              if (!docMap.has(node.id)) {
-                docMap.set(node.id, {
-                  id: node.id,
-                  name: fileName,
-                });
-              }
-            }
-          });
-        }
-        
-        setDocuments(Array.from(docMap.values()));
+        await refreshDocuments();
       } catch (error) {
         console.error("Error fetching documents:", error);
       } finally {
@@ -71,6 +74,7 @@ export default function FileLibrary() {
     }
 
     setIsUploading(true);
+    setIsServerProcessing(false);
     setUploadProgress(0);
 
     try {
@@ -85,30 +89,58 @@ export default function FileLibrary() {
           setUploadProgress(percentComplete);
         }
       });
+      xhr.upload.addEventListener("load", () => {
+        setUploadProgress(100);
+        setIsServerProcessing(true);
+      });
 
-      xhr.addEventListener("load", () => {
-        if (xhr.status === 200) {
-          const result = JSON.parse(xhr.responseText);
-          setDocuments((prev) => [
-            ...prev,
-            {
-              id: result.doc_id,
-              name: result.file_name,
-              created_at: new Date().toISOString(),
-            },
-          ]);
+      xhr.addEventListener("load", async () => {
+        try {
+          if (xhr.status < 200 || xhr.status >= 300) {
+            throw new Error(`Upload failed: ${xhr.status} ${xhr.statusText}`);
+          }
+
+          const result = JSON.parse(xhr.responseText) as {
+            doc_id?: string;
+            document_id?: string;
+            file_name?: string;
+            status?: string;
+          };
+          const uploadedId = result.document_id || result.doc_id;
+
+          const uploadedName = result.file_name?.trim();
+          if (uploadedId && uploadedName) {
+            setDocuments((prev) => [
+              ...prev,
+              {
+                id: uploadedId,
+                name: uploadedName,
+                created_at: new Date().toISOString(),
+              },
+            ]);
+          } else {
+            await refreshDocuments();
+          }
+
           setUploadProgress(100);
+        } catch (error) {
+          console.error("Upload response handling error:", error);
+          alert("Upload completed but response parsing failed. Refreshing list.");
+          await refreshDocuments();
+        } finally {
           setTimeout(() => {
             setIsUploading(false);
+            setIsServerProcessing(false);
             setUploadProgress(0);
           }, 500);
-        } else {
-          throw new Error(`Upload failed: ${xhr.statusText}`);
         }
       });
 
       xhr.addEventListener("error", () => {
-        throw new Error("Upload failed");
+        console.error("Upload failed due to network error.");
+        setIsUploading(false);
+        setIsServerProcessing(false);
+        setUploadProgress(0);
       });
 
       xhr.open("POST", API_ENDPOINTS.INGEST);
@@ -116,6 +148,7 @@ export default function FileLibrary() {
     } catch (error) {
       console.error("Upload error:", error);
       setIsUploading(false);
+      setIsServerProcessing(false);
       setUploadProgress(0);
     }
   };
@@ -173,9 +206,11 @@ export default function FileLibrary() {
                 <>
                   <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />
                   <span className="text-xs font-mono text-white/90">
-                    UPLOADING {Math.round(uploadProgress)}%
+                    {isServerProcessing
+                      ? "PROCESSING ON SERVER..."
+                      : `UPLOADING ${Math.round(uploadProgress)}%`}
                   </span>
-                  {uploadProgress > 0 && (
+                  {!isServerProcessing && uploadProgress > 0 && (
                     <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-cyan-500/50">
                       <div
                         className="h-full bg-cyan-500 transition-all duration-300"

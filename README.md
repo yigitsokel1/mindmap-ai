@@ -1,40 +1,43 @@
-# MindMap-AI: Academic GraphRAG Agent 🧠
+# MindMap-AI: Semantic Knowledge Graph Workbench
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue?style=for-the-badge&logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)
 ![Neo4j](https://img.shields.io/badge/Neo4j-008CC1?style=for-the-badge&logo=neo4j&logoColor=white)
 ![LangChain](https://img.shields.io/badge/LangChain_Experimental-1C3C3C?style=for-the-badge&logo=chainlink&logoColor=white)
 
-## 📖 Abstract (Proje Özeti)
+## Product Focus
 
-**MindMap-AI**, akademik makaleleri (PDF) analiz ederek derinlemesine bir **Bilgi Grafiği'ne (Knowledge Graph)** dönüştüren ve bu grafik üzerinde bağlamsal sorgulama yapabilen gelişmiş bir RAG (Retrieval-Augmented Generation) sistemidir.
+MindMap-AI converts academic PDFs into a semantic knowledge graph and answers questions directly from graph provenance.
+The primary runtime path is semantic ingestion and semantic query.
 
-Standart RAG sistemleri metinleri vektör olarak saklarken, MindMap-AI kavramlar arasındaki **ilişkileri (Relationships)** modeller. Bu sayede, *"Transformer mimarisi ile RNN arasındaki temel farklar nelerdir?"* gibi kompleks sorulara, sadece kelime eşleşmesiyle değil, anlamsal bağları takip ederek yanıt verir.
+Primary pipeline:
 
-## 🏗 System Architecture (Mimari)
+- PDF parse
+- extraction and normalization
+- graph write to Neo4j
+- graph read through semantic API contracts
+- semantic grounded query (`/api/query/semantic`)
 
-Sistem **Clean Architecture** prensiplerine göre modüler olarak tasarlanmıştır:
+## Primary Path vs Legacy Path
 
-### 1. Ingestion Engine (Veri İşleme)
+- Primary path:
+  - semantic ingestion (`POST /api/ingest`, default mode)
+  - semantic graph read (`GET /api/graph`)
+  - semantic grounded query (`POST /api/query/semantic`)
+- Legacy migration path:
+  - chunk/embedding retrieval and legacy chat endpoints
+  - retained for compatibility during migration only
 
-- **PDF Parsing:** `PyPDFLoader` ile sayfa sayfa ham metin çıkarımı (metadata korunur)  
-- **Smart Chunking:** `RecursiveCharacterTextSplitter` ile bağlamı koruyan parçalama (chunk_size=1000, overlap=200)  
-- **Embedding Generation:** OpenAI `text-embedding-3-small` ile her chunk için vektör oluşturma  
-- **Hierarchical Storage:** Neo4j'de `Document` → `Chunk` hiyerarşik yapısı (`BELONGS_TO` ilişkisi)  
-- **Batch Processing:** UNWIND ile toplu insert işlemleri (performans optimizasyonu)
+## System Architecture
 
-### 2. Knowledge Store (Veri Depolama)
+The current architecture follows a semantic graph-first model:
 
-- **Neo4j Graph DB:** Yapılandırılmış verinin saklandığı grafik veritabanı
+1. Ingestion: parse documents and extract typed entities, relations, evidence, and citations.
+2. Graph write: persist semantic structures and provenance chains to Neo4j.
+3. Graph read: expose semantic graph contracts for frontend and filtering.
+4. Semantic query: deterministic, evidence-backed answers from graph traversals.
 
-### 3. Retrieval Engine (Bilgi Getirme)
-
-- **Neighborhood Search Strategy:**  
-  Klasik vektör araması yerine, sorulan kavramın grafikteki "komşularını" (1-hop relationships) bularak yanıt üretme stratejisi. Bu, kopuk bilgi sorununu çözer.
-
-### 4. API Layer (Sunum Katmanı)
-
-- **FastAPI:** Asenkron `background_tasks` ile PDF işleme ve anlık Chat uç noktaları
+Legacy GraphRAG retrieval remains available only as a migration compatibility path.
 
 ## 🛠 Tech Stack
 
@@ -100,14 +103,16 @@ uvicorn backend.app.main:app --reload
 
 - semantic ingestion = **primary**
 - semantic graph read = **new primary read path**
+- semantic grounded query = **new primary QA path**
 - legacy chat/vector retrieval = **migration mode**
 
-### Frontend Migration Note (Sprint 9)
+### Frontend Migration Note (Sprint 10)
 
 - Frontend graph viewer now uses semantic `GET /api/graph` response contract (`nodes`, `edges`, `meta`).
 - Graph exploration includes preset modes: **Semantic**, **Evidence**, **Citation**.
 - Document-focused filtering is wired into graph fetch filters (`document_id`, include toggles).
-- Chat remains available in **legacy chat mode** while semantic chat migration is pending.
+- Command Center now supports **Legacy Chat** and **Semantic Query** modes.
+- Semantic Query mode renders evidence-first answers and supports inspector page jump from evidence cards.
 
 ### 1. Ingest PDF
 
@@ -129,10 +134,30 @@ Semantic filters on `GET /api/graph`:
 - `include_evidence`
 - `include_citations`
 
-### 3. Chat
+### 3. Grounded Semantic Query
+
+Endpoint: `POST /api/query/semantic`  
+Status: **primary query/QA path** (graph-backed, evidence-backed, deterministic template answer in Sprint 10).
+
+Request contract:
+- `question` (required)
+- `document_id` (optional)
+- `node_types` (optional)
+- `max_evidence` (optional, default 5)
+- `include_citations` (optional, default true)
+
+Response contract:
+- `answer`
+- `evidence[]` (`relation_type`, `page`, `snippet`, `related_node_ids`, document + citation fields)
+- `related_nodes[]`
+- `citations[]`
+- `confidence`
+- `mode = "semantic_grounded"`
+
+### 4. Legacy Chat (Migration Path)
 
 Endpoint: `POST /api/chat`  
-Status: current chat path uses **legacy retrieval**. Semantic query chat is pending.
+Status: current chat path uses **legacy retrieval** and remains available for backward compatibility.
 
 ## 📊 Active Graph Docs
 
@@ -154,7 +179,7 @@ Backend regression checks introduced in Sprint 8:
 - Unit tests for identity and normalization logic
 - Unit tests for section/reference/inline-citation/document parsing
 - Unit tests for semantic graph response shaping
-- Integration contract tests for `/api/extract` and `/api/graph/semantic`
+- Integration contract tests for `/api/extract`, `/api/graph/semantic`, and `/api/query/semantic`
 
 Run locally:
 
@@ -167,6 +192,11 @@ Semantic graph endpoint contract checks now include:
 
 - Empty graph response shape (`nodes`, `edges`, `meta`)
 - `node_types` query parsing for both CSV and repeated parameter forms
+
+Semantic query endpoint contract checks include:
+
+- Response mode and evidence-backed shape (`answer`, `evidence`, `related_nodes`, `citations`, `confidence`)
+- Request validation for required/bounded semantic query fields
 
 ### Manual Ingestion Script
 

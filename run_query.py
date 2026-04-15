@@ -1,7 +1,7 @@
 """Legacy retrieval debug script.
 
 This helper runs the current legacy chat retrieval path for diagnostics.
-Semantic query chat is pending and not wired here.
+Primary semantic QA path is `POST /api/query/semantic`.
 """
 
 import os
@@ -12,7 +12,7 @@ from backend.app.services.legacy.retrieval import GraphRAGService
 load_dotenv()
 
 def main():
-    print("🤖 GraphRAG Asistanı Başlatılıyor...")
+    print("Legacy retrieval diagnostic script. Primary path is POST /api/query/semantic.")
     
     try:
         service = GraphRAGService()

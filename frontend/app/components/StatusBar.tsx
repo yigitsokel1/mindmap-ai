@@ -28,7 +28,7 @@ export default function StatusBar() {
           graph: isHealthy,
           engine: true,
         });
-      } catch (error) {
+      } catch {
         setStatus({
           neo4j: false,
           graph: false,

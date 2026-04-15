@@ -487,6 +487,26 @@ As of Sprint 8, backend quality gates and test coverage were expanded for semant
 
 ---
 
+## Sprint 10 Status Update
+
+As of Sprint 10, semantic QA/query path is implemented as a dedicated grounded endpoint:
+
+- `POST /api/query/semantic` is added as a semantic graph-backed query contract.
+- Response contract is evidence-first (`answer`, `evidence`, `related_nodes`, `citations`, `confidence`, `mode`).
+- `POST /api/chat` remains available as legacy retrieval mode for compatibility.
+- Command Center includes explicit `Legacy Chat` vs `Semantic Query` user mode split.
+- Backend tests now include semantic query service unit coverage and endpoint contract checks.
+
+Runtime truth table after Sprint 10:
+
+| Capability | Primary Path | Migration/Fallback Path |
+|------------|--------------|-------------------------|
+| Ingestion | `POST /api/ingest?mode=semantic` | `POST /api/ingest?mode=legacy` |
+| Graph Read | `GET /api/graph` / `GET /api/graph/semantic` | `GET /api/graph/legacy` |
+| Query/QA | `POST /api/query/semantic` | `POST /api/chat` (legacy retrieval) |
+
+---
+
 ## Summary Table
 
 | File | Status | Priority | Sprint |

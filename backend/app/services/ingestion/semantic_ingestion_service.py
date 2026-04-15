@@ -206,9 +206,8 @@ class SemanticIngestionService:
                 self.db.connect()
 
             result, _, _ = self.db.driver.execute_query(
-                "MATCH (d:Document {file_hash: $hash}) RETURN d.uid AS uid LIMIT 1",
+                "MATCH (d:Document) WHERE d['file_hash'] = $hash RETURN d.uid AS uid LIMIT 1",
                 {"hash": file_hash},
-                database_="neo4j",
             )
             if result:
                 return result[0]["uid"]
@@ -253,7 +252,6 @@ class SemanticIngestionService:
                     "file_hash": file_hash,
                     "saved_name": saved_name,
                 },
-                database_="neo4j",
             )
         except Exception as e:
             logger.error("Failed to store document metadata: %s", e)

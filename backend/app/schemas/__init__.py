@@ -6,6 +6,13 @@ from .entities import BaseEntity
 from .extraction import ExtractionResult
 from .passage import PassageRecord
 from .relations import Relation
+from .semantic_query import (
+    CitationItem,
+    RelatedNodeItem,
+    SemanticEvidenceItem,
+    SemanticQueryAnswer,
+    SemanticQueryRequest,
+)
 
 __all__ = [
     "CitationLinkRecord",
@@ -16,4 +23,9 @@ __all__ = [
     "ExtractionResult",
     "PassageRecord",
     "Relation",
+    "SemanticQueryRequest",
+    "SemanticEvidenceItem",
+    "RelatedNodeItem",
+    "CitationItem",
+    "SemanticQueryAnswer",
 ]
