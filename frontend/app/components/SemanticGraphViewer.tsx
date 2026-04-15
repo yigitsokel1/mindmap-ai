@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ComponentProps, type MutableRefObject } from "react";
 import ForceGraph3D from "react-force-graph-3d";
 import { fetchSemanticGraph, stableGraphFilterKey, toRenderData } from "../lib/api";
+import { resolveNodeDisplayName } from "../lib/documentLabel";
 import type { GraphNode, GraphRenderData } from "../lib/types";
 import { useAppStore } from "../store/useAppStore";
 
@@ -54,14 +55,12 @@ export default function SemanticGraphViewer() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const {
-    graphFilters,
-    graphRefreshToken,
-    highlightedNodeIds,
-    setSelectedNode,
-    setSelectedNodeContext,
-    openPDFViewer,
-  } = useAppStore();
+  const graphFilters = useAppStore((state) => state.graphFilters);
+  const graphRefreshToken = useAppStore((state) => state.graphRefreshToken);
+  const highlightedNodeIds = useAppStore((state) => state.highlightedNodeIds);
+  const setSelectedNode = useAppStore((state) => state.setSelectedNode);
+  const setSelectedNodeContext = useAppStore((state) => state.setSelectedNodeContext);
+  const openPDFViewer = useAppStore((state) => state.openPDFViewer);
 
   useEffect(() => {
     const requestKey = `${stableGraphFilterKey(graphFilters)}:${graphRefreshToken}`;
@@ -126,7 +125,7 @@ export default function SemanticGraphViewer() {
 
   const handleNodeClick = (node: GraphNode) => {
     const properties = node.properties || {};
-    const nodeTitle = node.display_name || node.id;
+    const nodeTitle = resolveNodeDisplayName(node);
     const docName =
       asString(properties.file_name) ||
       asString(properties.document_name) ||
@@ -179,7 +178,7 @@ export default function SemanticGraphViewer() {
         backgroundColor="#000000"
         nodeColor={(node: GraphNode) => NODE_COLORS[node.label] || "#94a3b8"}
         nodeVal={nodeVal}
-        nodeLabel={(node: GraphNode) => `${node.display_name} [${node.label}]`}
+        nodeLabel={(node: GraphNode) => `${resolveNodeDisplayName(node)} [${node.label}]`}
         linkColor={() => "rgba(148, 163, 184, 0.35)"}
         linkWidth={0.8}
         linkDirectionalParticles={0}

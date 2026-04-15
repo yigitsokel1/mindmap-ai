@@ -10,6 +10,7 @@ Graph pattern for provenance:
 """
 
 import logging
+import time
 from datetime import datetime, timezone
 
 from backend.app.core.db import Neo4jDatabase
@@ -18,6 +19,7 @@ from backend.app.schemas.citation import CitationLinkRecord, InlineCitationRecor
 from backend.app.schemas.document_structure import ReferenceRecord, SectionRecord
 from backend.app.schemas.extraction import ExtractionResult
 from backend.app.schemas.passage import PassageRecord
+from neo4j.exceptions import ServiceUnavailable, SessionExpired, TransientError
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +108,71 @@ class GraphWriter:
             "relations_written": relation_count,
             "evidence_written": evidence_count,
         }
+
+    def write_batch(
+        self,
+        batch_items: list[tuple[ExtractionResult, PassageRecord, dict | None]],
+    ) -> dict:
+        """Write a batch of passage extractions using a single session."""
+        if not self.db.driver:
+            self.db.connect()
+        retries = 3
+        for attempt in range(1, retries + 1):
+            entities_written = 0
+            relations_written = 0
+            evidence_written = 0
+            try:
+                with self.db.driver.session() as session:
+                    for extraction, passage, citation_metadata in batch_items:
+                        self._ensure_document(session, passage.document_id, None)
+                        self._ensure_passage(session, passage)
+                        for entity in extraction.entities:
+                            if entity.type not in ENTITY_LABELS:
+                                continue
+                            canonical = entity.canonical_name or entity.name
+                            uid = build_entity_uid(entity.type, canonical)
+                            self._write_entity(session, entity, uid)
+                            entities_written += 1
+                        for rel in extraction.relations:
+                            source_uid = build_entity_uid(
+                                self._find_entity_type(extraction, rel.source), rel.source
+                            )
+                            target_uid = build_entity_uid(
+                                self._find_entity_type(extraction, rel.target), rel.target
+                            )
+                            ri_uid = build_relation_instance_uid(rel.type, source_uid, target_uid)
+                            ev_uid = f"ev:{ri_uid}:{passage.passage_id}"
+                            wrote_ri = self._write_relation_instance(
+                                session, ri_uid, rel, source_uid, target_uid
+                            )
+                            if wrote_ri:
+                                relations_written += 1
+                                self._write_evidence(
+                                    session,
+                                    ev_uid,
+                                    ri_uid,
+                                    passage,
+                                    rel.confidence,
+                                    citation_metadata=citation_metadata,
+                                )
+                                evidence_written += 1
+                return {
+                    "entities_written": entities_written,
+                    "relations_written": relations_written,
+                    "evidence_written": evidence_written,
+                }
+            except (TransientError, ServiceUnavailable, SessionExpired) as exc:
+                if attempt == retries:
+                    raise
+                delay_s = 0.5 * attempt
+                logger.warning(
+                    "Retrying write_batch after transient Neo4j error attempt=%d/%d delay=%.2fs error=%s",
+                    attempt,
+                    retries,
+                    delay_s,
+                    exc,
+                )
+                time.sleep(delay_s)
 
     # --- Private methods ---
 
@@ -351,7 +418,7 @@ class GraphWriter:
                     "WITH c "
                     "MATCH (p:Passage {uid: $passage_uid}) "
                     "MERGE (p)-[:HAS_INLINE_CITATION]->(c) "
-                    "RETURN c.uid AS citation_uid",
+                    "RETURN p.uid AS passage_uid, c.uid AS citation_uid",
                     {
                         "uid": citation.citation_id,
                         "raw_text": citation.raw_text,
@@ -368,6 +435,11 @@ class GraphWriter:
                 if result.single():
                     citations_written += 1
                 else:
+                    logger.warning(
+                        "Inline citation %s could not be linked: missing Passage %s",
+                        citation.citation_id,
+                        citation.passage_id,
+                    )
                     unlinked_citations += 1
 
             for link in citation_links:

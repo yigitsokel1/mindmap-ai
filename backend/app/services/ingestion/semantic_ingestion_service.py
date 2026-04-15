@@ -9,9 +9,11 @@ Flow:
 """
 
 import hashlib
+import inspect
 import logging
 import shutil
 import uuid
+import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
@@ -22,7 +24,7 @@ from backend.app.services.parsing.document_parser import parse_document, ParseRe
 from backend.app.services.extraction.pipeline import ExtractionPipeline, PipelineResult
 from backend.app.services.graph.graph_writer import GraphWriter
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("uvicorn.error")
 
 
 @dataclass
@@ -142,6 +144,13 @@ class SemanticIngestionService:
             document_id,
             progress_callback=progress_callback,
         )
+        logger.info(
+            "Parsed document metrics: document_id=%s pages_total=%d sections_total=%d body_passages_total=%d",
+            document_id,
+            len(parse_result.pages),
+            len(parse_result.sections),
+            len(parse_result.passages),
+        )
 
         # Step 5: Ensure document node has full metadata
         self._store_document_metadata(document_id, file_name, file_hash, saved_name)
@@ -156,7 +165,18 @@ class SemanticIngestionService:
             self._notify(progress_callback, "writing_graph", {"subphase": "references"})
             self.writer.write_references(parse_result.references, document_id)
 
-        # Step 8: Write inline citation nodes and links
+        # Step 8: Run extraction pipeline (on body passages only)
+        self._notify(progress_callback, "extracting_semantics")
+        pipeline_result = self.pipeline.run(
+            document_id=document_id,
+            passages=parse_result.passages,
+            inline_citations=parse_result.inline_citations,
+            total_pages=len(parse_result.pages),
+        )
+
+        # Step 9: Write inline citation nodes and links
+        # This must run after passage writes from the extraction pipeline so
+        # (Passage)-[:HAS_INLINE_CITATION]->(InlineCitation) links can resolve.
         inline_citation_stats = {"citations_written": 0, "citation_links_written": 0}
         if parse_result.inline_citations:
             self._notify(progress_callback, "writing_graph", {"subphase": "inline_citations"})
@@ -164,14 +184,6 @@ class SemanticIngestionService:
                 parse_result.inline_citations,
                 parse_result.citation_links,
             )
-
-        # Step 9: Run extraction pipeline (on body passages only)
-        self._notify(progress_callback, "extracting_semantics")
-        pipeline_result = self.pipeline.run(
-            document_id=document_id,
-            passages=parse_result.passages,
-            inline_citations=parse_result.inline_citations,
-        )
         self._notify(progress_callback, "completed", {"document_id": document_id})
         elapsed = perf_counter() - started_at
 
@@ -196,6 +208,29 @@ class SemanticIngestionService:
             inline_citation_stats["citations_written"],
             inline_citation_stats["citation_links_written"],
             elapsed,
+        )
+        logger.info(
+            "Semantic ingestion total duration: file=%s document_id=%s total_duration_ms=%d",
+            file_name,
+            document_id,
+            int(elapsed * 1000),
+        )
+        logger.info(
+            "Ingestion summary telemetry: document_id=%s passage_count=%d parallel_tasks_peak=%d total_llm_calls=%d avg_llm_ms=%d total_ingest_ms=%d",
+            document_id,
+            pipeline_result.passages_succeeded + pipeline_result.passages_failed,
+            pipeline_result.parallel_tasks_peak,
+            pipeline_result.total_llm_calls,
+            pipeline_result.avg_llm_ms,
+            int(elapsed * 1000),
+        )
+        logger.info(
+            "Ingestion passage metrics: document_id=%s pages_total=%d sections_total=%d body_passages_total=%d reference_passages_skipped=%d",
+            document_id,
+            len(parse_result.pages),
+            len(parse_result.sections),
+            len(parse_result.passages),
+            pipeline_result.reference_passages_skipped,
         )
 
         return IngestionResult(
@@ -231,7 +266,17 @@ class SemanticIngestionService:
     ) -> None:
         if not progress_callback:
             return
-        progress_callback(stage, details)
+        maybe_awaitable = progress_callback(stage, details)
+        if inspect.isawaitable(maybe_awaitable):
+            try:
+                asyncio.get_running_loop()
+                has_running_loop = True
+            except RuntimeError:
+                has_running_loop = False
+            if has_running_loop:
+                asyncio.create_task(maybe_awaitable)
+                return
+            asyncio.run(maybe_awaitable)
 
     def _calculate_file_hash(self, file_path: Path) -> str:
         """Calculate MD5 hash of a file."""
@@ -247,7 +292,7 @@ class SemanticIngestionService:
             if not self.db.driver:
                 self.db.connect()
 
-            result, _, _ = self.db.driver.execute_query(
+            result, _, _ = self.db.execute_query_with_retry(
                 "MATCH (d:Document) WHERE d['file_hash'] = $hash RETURN d.uid AS uid LIMIT 1",
                 {"hash": file_hash},
             )
@@ -283,7 +328,7 @@ class SemanticIngestionService:
             if not self.db.driver:
                 self.db.connect()
 
-            self.db.driver.execute_query(
+            self.db.execute_query_with_retry(
                 "MERGE (d:Document {uid: $uid}) "
                 "SET d.file_name = $file_name, "
                 "    d.file_hash = $file_hash, "

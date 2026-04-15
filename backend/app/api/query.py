@@ -29,9 +29,12 @@ async def semantic_query(request: SemanticQueryRequest) -> SemanticQueryAnswer:
             else len(response.get("related_nodes", []))
         )
         logger.info(
-            "Semantic query success question_len=%d document_id=%s evidence=%d related_nodes=%d elapsed=%.3fs",
+            "Semantic query success question_len=%d document_id=%s node_types=%s max_evidence=%d include_citations=%s evidence=%d related_nodes=%d elapsed=%.3fs",
             len(request.question),
             request.document_id,
+            request.node_types,
+            request.max_evidence,
+            request.include_citations,
             evidence_count,
             related_count,
             time.perf_counter() - started_at,

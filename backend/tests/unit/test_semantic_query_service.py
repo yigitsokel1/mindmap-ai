@@ -97,6 +97,8 @@ def test_semantic_query_service_uses_current_schema_edges(monkeypatch):
     assert "MATCH (n)-[:OUT_REL]->(ri:RelationInstance)" in fake_db.driver.last_query
     assert "[:SUPPORTS]" in fake_db.driver.last_query
     assert "[:FROM_PASSAGE]" in fake_db.driver.last_query
+    assert "[:HAS_SECTION]" in fake_db.driver.last_query
+    assert "[:HAS_PASSAGE]" in fake_db.driver.last_query
     assert "[:HAS_INLINE_CITATION]" in fake_db.driver.last_query
     assert "[:REFERS_TO]" in fake_db.driver.last_query
 
@@ -159,8 +161,8 @@ def test_semantic_query_service_handles_nodes_without_evidence(monkeypatch):
         def execute_query(self, query, params=None, database_=None):
             if "RETURN DISTINCT n" in query:
                 return ([{"n": FakeNode("n-1", ["Method"], {"display_name": "Transformer"})}], None, None)
-            if "MATCH (n)-[r]-(ri:RelationInstance)" in query:
-                return ([{"r": FakeRel("USES"), "ri": FakeNode("ri-1", ["RelationInstance"], {"type": "USES"})}], None, None)
+            if "MATCH (n)-[:OUT_REL]->(ri:RelationInstance)" in query:
+                return ([{"ri": FakeNode("ri-1", ["RelationInstance"], {"type": "USES"})}], None, None)
             return ([], None, None)
 
     class NoEvidenceDB(FakeDB):

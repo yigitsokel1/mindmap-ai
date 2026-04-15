@@ -2,6 +2,8 @@
 
 This document defines the canonical schema for the Semantic Knowledge Graph. All extraction, normalization, and storage logic must conform to these definitions.
 
+Source of truth for traversal contracts: `docs/graph_contract.md`.
+
 **Version:** 1.0
 **Status:** Active
 **Scope:** Academic / technical paper analysis

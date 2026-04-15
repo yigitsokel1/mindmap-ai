@@ -1,6 +1,7 @@
 """Ingestion API endpoints."""
 
 import logging
+import asyncio
 import os
 import shutil
 import tempfile
@@ -74,19 +75,65 @@ async def ingest(
 
         service = SemanticIngestionService()
         logger.info("Semantic ingestion started: file=%s job_id=%s", original_filename, job.job_id)
+        stage_aliases = {
+            "parsing": "parsing_pdf",
+            "detecting_sections": "section_detection",
+            "parsing_references": "reference_parsing",
+            "extracting_semantics": "extracting_semantics",
+            "writing_graph": "writing_graph",
+            "completed": "completed",
+            "uploaded": "upload",
+            "failed": "failed",
+        }
+        stage_started_at: dict[str, float] = {}
+        previous_stage: str | None = None
 
         def on_stage(stage: str, details: dict | None = None) -> None:
+            nonlocal previous_stage
+            now = time.perf_counter()
+            if previous_stage and previous_stage != stage:
+                previous_alias = stage_aliases.get(previous_stage, previous_stage)
+                previous_started = stage_started_at.get(previous_stage)
+                if previous_started is not None:
+                    logger.info(
+                        "Ingest stage completed: job_id=%s file=%s stage=%s duration_ms=%d",
+                        job.job_id,
+                        original_filename,
+                        previous_alias,
+                        int((now - previous_started) * 1000),
+                    )
             updated = ingest_job_store.update_stage(job.job_id, stage, details)
             if updated:
+                stage_started_at[stage] = now
+                stage_name = stage_aliases.get(stage, stage)
                 logger.info(
-                    "Ingest stage transition: job_id=%s file=%s stage=%s details=%s",
+                    "Ingest stage transition: job_id=%s file=%s stage=%s started_at=%.6f details=%s",
                     job.job_id,
                     original_filename,
-                    stage,
+                    stage_name,
+                    now,
                     details or {},
                 )
+                previous_stage = stage
 
-        result = service.ingest_pdf(temp_file_path, original_filename, progress_callback=on_stage)
+        result = await asyncio.to_thread(
+            service.ingest_pdf,
+            temp_file_path,
+            original_filename,
+            on_stage,
+        )
+        if previous_stage:
+            completed_at = time.perf_counter()
+            previous_started = stage_started_at.get(previous_stage)
+            previous_alias = stage_aliases.get(previous_stage, previous_stage)
+            if previous_started is not None:
+                logger.info(
+                    "Ingest stage completed: job_id=%s file=%s stage=%s duration_ms=%d",
+                    job.job_id,
+                    original_filename,
+                    previous_alias,
+                    int((completed_at - previous_started) * 1000),
+                )
         ingest_job_store.mark_completed(
             job.job_id,
             document_id=result.document_id,

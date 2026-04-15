@@ -7,6 +7,7 @@ import { useAppStore } from "../store/useAppStore";
 import ChatBubble from "./ChatBubble";
 import FileLibrary from "./FileLibrary";
 import { API_ENDPOINTS, PRESET_LABELS } from "../lib/constants";
+import { resolveDocumentDisplayName } from "../lib/documentLabel";
 import type {
   ChatMessage,
   ChatResponse,
@@ -24,23 +25,21 @@ export default function CommandCenter() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const {
-    isCommandCenterOpen,
-    activeTab,
-    setActiveTab,
-    toggleCommandCenter,
-    setHighlightedNodes,
-    openPDFViewer,
-    graphPreset,
-    setGraphPreset,
-    graphFilters,
-    updateGraphFilters,
-    selectedDocumentId,
-    setSelectedDocumentId,
-    queryMode,
-    setQueryMode,
-    setSelectedNodeContext,
-  } = useAppStore();
+  const isCommandCenterOpen = useAppStore((state) => state.isCommandCenterOpen);
+  const activeTab = useAppStore((state) => state.activeTab);
+  const setActiveTab = useAppStore((state) => state.setActiveTab);
+  const toggleCommandCenter = useAppStore((state) => state.toggleCommandCenter);
+  const setHighlightedNodes = useAppStore((state) => state.setHighlightedNodes);
+  const openPDFViewer = useAppStore((state) => state.openPDFViewer);
+  const graphPreset = useAppStore((state) => state.graphPreset);
+  const setGraphPreset = useAppStore((state) => state.setGraphPreset);
+  const graphFilters = useAppStore((state) => state.graphFilters);
+  const updateGraphFilters = useAppStore((state) => state.updateGraphFilters);
+  const selectedDocumentId = useAppStore((state) => state.selectedDocumentId);
+  const setSelectedDocumentId = useAppStore((state) => state.setSelectedDocumentId);
+  const queryMode = useAppStore((state) => state.queryMode);
+  const setQueryMode = useAppStore((state) => state.setQueryMode);
+  const setSelectedNodeContext = useAppStore((state) => state.setSelectedNodeContext);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -160,7 +159,11 @@ export default function CommandCenter() {
   };
 
   const handleEvidenceClick = (evidence: SemanticEvidenceItem) => {
-    const docName = evidence.document_name || evidence.document_id || "Unknown";
+    const docName = resolveDocumentDisplayName(
+      evidence.document_name ?? undefined,
+      undefined,
+      evidence.document_id ?? "Unknown"
+    );
     if (evidence.page && evidence.document_name) {
       const pdfUrl = API_ENDPOINTS.STATIC(evidence.document_name);
       openPDFViewer(pdfUrl, evidence.document_name, evidence.page);
@@ -389,7 +392,11 @@ export default function CommandCenter() {
                           {item.snippet || "No snippet available."}
                         </p>
                         <p className="text-[10px] text-white/60 font-mono mt-1">
-                          {item.document_name || item.document_id || "Unknown document"}
+                          {resolveDocumentDisplayName(
+                            item.document_name ?? undefined,
+                            undefined,
+                            item.document_id ?? "Unknown document"
+                          )}
                           {item.page ? ` · page ${item.page}` : ""}
                         </p>
                       </button>

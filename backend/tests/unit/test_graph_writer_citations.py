@@ -87,4 +87,9 @@ def test_write_inline_citations_persists_chain_and_counts(monkeypatch):
     assert stats["unlinked_citations"] == 1
     assert stats["citation_links_written"] == 1
     assert any("HAS_INLINE_CITATION" in query for query, _ in fake_session.calls)
+    assert any(
+        "MATCH (p:Passage {uid: $passage_uid}) " in query
+        and "MERGE (p)-[:HAS_INLINE_CITATION]->(c)" in query
+        for query, _ in fake_session.calls
+    )
     assert any("REFERS_TO" in query for query, _ in fake_session.calls)

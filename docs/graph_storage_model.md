@@ -2,6 +2,8 @@
 
 This document defines how the V1 ontology maps to Neo4j storage — node labels, properties, relationships, constraints, indexes, and the provenance storage pattern.
 
+Source of truth for traversal contracts: `docs/graph_contract.md`.
+
 **Version:** 1.0
 **Status:** Active
 **Depends on:** `ontology_v1.md`, `extraction_contract.md`

@@ -11,7 +11,9 @@ Flow:
 """
 
 import logging
+import asyncio
 import uuid
+import inspect
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -27,7 +29,7 @@ from backend.app.services.parsing.reference_parser import (
     parse_references,
 )
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("uvicorn.error")
 
 
 @dataclass
@@ -49,8 +51,8 @@ ParseResult = DocumentParseResult
 def parse_document(
     file_path: str,
     document_id: str,
-    chunk_size: int = 800,
-    chunk_overlap: int = 100,
+    chunk_size: int = 1600,
+    chunk_overlap: int = 200,
     progress_callback: Callable[[str, dict | None], None] | None = None,
 ) -> DocumentParseResult:
     """Parse a PDF into section-aware PassageRecords.
@@ -129,14 +131,6 @@ def parse_document(
                     content_type=content_type,
                 )
                 passages.append(passage)
-                inline_citations.extend(
-                    parse_inline_citations(
-                        passage_text=text,
-                        document_id=document_id,
-                        passage_id=passage.passage_id,
-                        page_number=passage.page_number,
-                    )
-                )
                 global_index += 1
     else:
         # Fallback: no sections detected — flat page-by-page splitting
@@ -152,15 +146,11 @@ def parse_document(
                     page_number=page.page_number,
                 )
                 passages.append(passage)
-                inline_citations.extend(
-                    parse_inline_citations(
-                        passage_text=text,
-                        document_id=document_id,
-                        passage_id=passage.passage_id,
-                        page_number=passage.page_number,
-                    )
-                )
                 global_index += 1
+
+    if passages:
+        _notify(progress_callback, "parsing", {"subphase": "inline_citations"})
+        inline_citations = _parse_inline_citations_parallel(passages, document_id)
 
     citation_links = _link_inline_citations_to_references(inline_citations, references)
 
@@ -197,6 +187,11 @@ def _collect_section_text(
     On shared pages, text stops before the next section heading.
     """
     texts: list[str] = []
+    next_section = None
+    for candidate in all_sections:
+        if candidate.ordinal > section.ordinal:
+            next_section = candidate
+            break
 
     for page in pages:
         if page.page_number < section.page_start:
@@ -214,6 +209,15 @@ def _collect_section_text(
             match = re.search(heading_escaped, page_text, re.IGNORECASE)
             if match:
                 page_text = page_text[match.end():]
+
+        # If next section starts on this page, stop before its heading.
+        if next_section and page.page_number == next_section.page_start:
+            import re
+
+            next_heading_escaped = re.escape(next_section.title)
+            next_match = re.search(next_heading_escaped, page_text, re.IGNORECASE)
+            if next_match:
+                page_text = page_text[:next_match.start()]
 
         texts.append(page_text)
 
@@ -286,4 +290,62 @@ def _notify(
 ) -> None:
     if not progress_callback:
         return
-    progress_callback(stage, details)
+    maybe_awaitable = progress_callback(stage, details)
+    if inspect.isawaitable(maybe_awaitable):
+        try:
+            asyncio.get_running_loop()
+            has_running_loop = True
+        except RuntimeError:
+            has_running_loop = False
+        if has_running_loop:
+            asyncio.create_task(maybe_awaitable)
+            return
+        asyncio.run(maybe_awaitable)
+
+
+def _parse_inline_citations_parallel(
+    passages: list[PassageRecord],
+    document_id: str,
+) -> list[InlineCitationRecord]:
+    """Parse inline citations concurrently across passages."""
+
+    semaphore = asyncio.Semaphore(5)
+
+    async def _parse_passage(passage: PassageRecord) -> list[InlineCitationRecord]:
+        async with semaphore:
+            return await asyncio.to_thread(
+                parse_inline_citations,
+                passage_text=passage.text,
+                document_id=document_id,
+                passage_id=passage.passage_id,
+                page_number=passage.page_number,
+            )
+
+    async def _run() -> list[list[InlineCitationRecord]]:
+        tasks = [_parse_passage(passage) for passage in passages]
+        if not tasks:
+            return []
+        return await asyncio.gather(*tasks)
+
+    try:
+        asyncio.get_running_loop()
+        has_running_loop = True
+    except RuntimeError:
+        has_running_loop = False
+
+    if has_running_loop:
+        grouped = [
+            parse_inline_citations(
+                passage_text=passage.text,
+                document_id=document_id,
+                passage_id=passage.passage_id,
+                page_number=passage.page_number,
+            )
+            for passage in passages
+        ]
+    else:
+        grouped = asyncio.run(_run())
+    flattened: list[InlineCitationRecord] = []
+    for items in grouped:
+        flattened.extend(items)
+    return flattened

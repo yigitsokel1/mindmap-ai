@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { FileText, Upload, Loader2 } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
 import { API_ENDPOINTS } from "../lib/constants";
+import { resolveDocumentDisplayName } from "../lib/documentLabel";
 import { fetchSemanticGraph, getPresetFilters } from "../lib/api";
 import type { Document, GraphNode, IngestJobStatus } from "../lib/types";
 
@@ -16,6 +17,16 @@ const INGEST_STAGE_LABELS: Record<IngestJobStatus["stage"], string> = {
   writing_graph: "Writing graph",
   completed: "Completed",
   failed: "Failed",
+};
+const INGEST_STAGE_ORDER: Record<IngestJobStatus["stage"], number> = {
+  uploaded: 0,
+  parsing: 1,
+  detecting_sections: 2,
+  parsing_references: 3,
+  extracting_semantics: 4,
+  writing_graph: 5,
+  completed: 6,
+  failed: 6,
 };
 
 function prettifyDocumentId(documentId: string): string {
@@ -35,7 +46,9 @@ export default function FileLibrary() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [ingestMessage, setIngestMessage] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const { openPDFViewer, setSelectedDocumentId, requestGraphRefresh } = useAppStore();
+  const openPDFViewer = useAppStore((state) => state.openPDFViewer);
+  const setSelectedDocumentId = useAppStore((state) => state.setSelectedDocumentId);
+  const requestGraphRefresh = useAppStore((state) => state.requestGraphRefresh);
 
   const refreshDocuments = async () => {
     const data = await fetchSemanticGraph(
@@ -52,9 +65,13 @@ export default function FileLibrary() {
       data.nodes.forEach((node: GraphNode) => {
         const nodeType = node.label || node.type;
         if (nodeType === "Document" && node.id) {
-          const title = node.display_name || (node.properties?.title as string | undefined);
           const fileName = node.properties?.file_name as string | undefined;
-          const displayName = title || fileName || prettifyDocumentId(node.id);
+          const title = node.properties?.title as string | undefined;
+          const displayName = resolveDocumentDisplayName(
+            fileName,
+            title,
+            prettifyDocumentId(node.id)
+          );
           const resolvedFileName = fileName || (node.properties?.saved_file_name as string | undefined) || "";
 
           if (!docMap.has(node.id)) {
@@ -138,27 +155,13 @@ export default function FileLibrary() {
             status?: string;
             ingest_job_id?: string;
           };
-          const uploadedId = result.document_id || result.doc_id;
           const ingestJobId = result.ingest_job_id;
 
           if (ingestJobId) {
             await pollIngestJob(ingestJobId);
           }
 
-          const uploadedName = result.file_name?.trim();
-          if (uploadedId && uploadedName) {
-            setDocuments((prev) => [
-              ...prev,
-              {
-                id: uploadedId,
-                name: uploadedName,
-                label: uploadedName,
-                created_at: new Date().toISOString(),
-              },
-            ]);
-          } else {
-            await refreshDocuments();
-          }
+          await refreshDocuments();
 
           setUploadProgress(100);
           setIngestMessage(INGEST_STAGE_LABELS.completed);
@@ -198,6 +201,7 @@ export default function FileLibrary() {
   };
 
   const pollIngestJob = async (jobId: string) => {
+    let lastStageOrder = INGEST_STAGE_ORDER.uploaded;
     for (let attempt = 0; attempt < 120; attempt += 1) {
       const response = await fetch(API_ENDPOINTS.INGEST_STATUS(jobId));
       if (!response.ok) {
@@ -205,7 +209,16 @@ export default function FileLibrary() {
       }
 
       const status = (await response.json()) as IngestJobStatus;
-      setIngestMessage(INGEST_STAGE_LABELS[status.stage]);
+      const currentOrder = INGEST_STAGE_ORDER[status.stage];
+      if (currentOrder >= lastStageOrder) {
+        const subphase = typeof status.details?.subphase === "string" ? status.details.subphase : undefined;
+        if (status.stage === "writing_graph" && subphase) {
+          setIngestMessage(`Writing graph (${subphase})`);
+        } else {
+          setIngestMessage(INGEST_STAGE_LABELS[status.stage]);
+        }
+        lastStageOrder = currentOrder;
+      }
 
       if (status.status === "completed") {
         await refreshDocuments();
@@ -229,7 +242,7 @@ export default function FileLibrary() {
     }
     const pdfUrl = API_ENDPOINTS.STATIC(doc.name);
     setSelectedDocumentId(doc.id);
-    openPDFViewer(pdfUrl, doc.label || doc.name, 1);
+    openPDFViewer(pdfUrl, resolveDocumentDisplayName(doc.name, doc.label, doc.id), 1);
   };
 
   return (

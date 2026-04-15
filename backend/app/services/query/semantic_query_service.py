@@ -35,11 +35,13 @@ class SemanticQueryService:
         try:
             tokens = self._tokenize_question(request.question)
             logger.info(
-                "Semantic query received question_len=%d token_count=%d document_id=%s node_types=%s",
+                "Semantic query received question_len=%d token_count=%d document_id=%s node_types=%s include_citations=%s max_evidence=%d",
                 len(request.question),
                 len(tokens),
                 request.document_id,
                 request.node_types,
+                request.include_citations,
+                request.max_evidence,
             )
             candidate_nodes = self._find_candidate_nodes(
                 tokens=tokens,
@@ -52,11 +54,12 @@ class SemanticQueryService:
             answer_text = self._build_answer_text(request.question, evidence, related_nodes)
             confidence = self._estimate_confidence(len(candidate_nodes), len(evidence))
             logger.info(
-                "Semantic query completed candidate_nodes=%d evidence=%d citations=%d confidence=%.2f",
+                "Semantic query completed candidate_nodes=%d evidence=%d citations=%d confidence=%.2f document_id=%s",
                 len(candidate_nodes),
                 len(evidence),
                 len(citations),
                 confidence,
+                request.document_id,
             )
 
             return SemanticQueryAnswer(
@@ -97,7 +100,7 @@ class SemanticQueryService:
           AND (
             $document_id IS NULL
             OR EXISTS {
-                MATCH (n)-[:OUT_REL]->(:RelationInstance)<-[:SUPPORTS]-(:Evidence)-[:FROM_PASSAGE]->(:Passage)<-[:HAS_PASSAGE]-(d:Document {uid: $document_id})
+                MATCH (n)-[:OUT_REL]->(:RelationInstance)<-[:SUPPORTS]-(:Evidence)-[:FROM_PASSAGE]->(:Passage)<-[:HAS_PASSAGE]-(:Section)<-[:HAS_SECTION]-(d:Document {uid: $document_id})
             }
           )
           AND (
@@ -143,7 +146,7 @@ class SemanticQueryService:
             WHERE elementId(n) = $node_id
             OPTIONAL MATCH (ev:Evidence)-[:SUPPORTS]->(ri)
             OPTIONAL MATCH (ev)-[:FROM_PASSAGE]->(p:Passage)
-            OPTIONAL MATCH (d:Document)-[:HAS_PASSAGE]->(p)
+            OPTIONAL MATCH (d:Document)-[:HAS_SECTION]->(:Section)-[:HAS_PASSAGE]->(p)
             WITH n, ri, ev, p, d
             WHERE (
                 $document_id IS NULL
@@ -263,8 +266,14 @@ class SemanticQueryService:
         question: str, evidence: Sequence[SemanticEvidenceItem], related_nodes: Sequence[RelatedNodeItem]
     ) -> str:
         if not related_nodes:
+            logger.info("Semantic query empty result: no candidate nodes for question=%r", question)
             return f"No semantic grounding found for: {question}"
         if not evidence:
+            logger.info(
+                "Semantic query no-evidence result: matched_nodes=%d question=%r",
+                len(related_nodes),
+                question,
+            )
             return f"Matched semantic nodes for '{question}', but no supporting evidence was found."
 
         intent = SemanticQueryService._classify_question(question)

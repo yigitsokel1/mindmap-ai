@@ -46,6 +46,8 @@ export function stableGraphFilterKey(filters: GraphFilters): string {
 }
 
 const inFlightGraphRequests = new Map<string, Promise<GraphResponse>>();
+const graphResponseCache = new Map<string, { expiresAt: number; data: GraphResponse }>();
+const GRAPH_RESPONSE_TTL_MS = 5000;
 
 export function getPresetFilters(
   preset: GraphPreset = DEFAULT_GRAPH_PRESET,
@@ -59,6 +61,12 @@ export function getPresetFilters(
 
 export async function fetchSemanticGraph(filters: GraphFilters = {}): Promise<GraphResponse> {
   const key = stableGraphFilterKey(filters);
+  const now = Date.now();
+  const cached = graphResponseCache.get(key);
+  if (cached && cached.expiresAt > now) {
+    return cached.data;
+  }
+
   const active = inFlightGraphRequests.get(key);
   if (active) {
     return active;
@@ -69,7 +77,9 @@ export async function fetchSemanticGraph(filters: GraphFilters = {}): Promise<Gr
     if (!response.ok) {
       throw new Error(`Failed to fetch semantic graph: ${response.statusText}`);
     }
-    return response.json() as Promise<GraphResponse>;
+    const data = (await response.json()) as GraphResponse;
+    graphResponseCache.set(key, { data, expiresAt: Date.now() + GRAPH_RESPONSE_TTL_MS });
+    return data;
   })();
 
   inFlightGraphRequests.set(key, request);

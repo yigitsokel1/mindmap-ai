@@ -111,6 +111,56 @@ class LLMExtractor:
 
         return ExtractionResult(**data)
 
+    def extract_batch(self, passages: list[dict]) -> list[ExtractionResult]:
+        """Extract entities/relations for 2-3 passages in one LLM call."""
+        if not passages:
+            return []
+        if len(passages) > 3:
+            raise ValueError("extract_batch supports up to 3 passages per call")
+
+        blocks: list[str] = []
+        for item in passages:
+            idx = item["index"]
+            section = item.get("section_title") or "Unknown"
+            text = item["text"]
+            blocks.append(
+                f"PASSAGE {idx}\nSection: {section}\nText:\n{text}"
+            )
+        prompt = (
+            "Extract entities and relations for each passage below.\n"
+            "Return JSON object with this exact shape:\n"
+            '{"results":[{"index":<int>,"entities":[...],"relations":[...]}]}\n\n'
+            + "\n\n".join(blocks)
+        )
+
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0,
+        )
+        content = response.choices[0].message.content
+        parsed = self._safe_parse(content)
+        raw_results = parsed.get("results", [])
+        by_index = {
+            int(item.get("index")): self._filter_invalid(
+                {
+                    "entities": item.get("entities", []),
+                    "relations": item.get("relations", []),
+                }
+            )
+            for item in raw_results
+            if isinstance(item, dict) and "index" in item
+        }
+
+        extraction_results: list[ExtractionResult] = []
+        for item in passages:
+            cleaned = by_index.get(item["index"], {"entities": [], "relations": []})
+            extraction_results.append(ExtractionResult(**cleaned))
+        return extraction_results
+
     def _safe_parse(self, content: str) -> dict:
         """Parse JSON from LLM output with fallback for malformed responses."""
         try:
