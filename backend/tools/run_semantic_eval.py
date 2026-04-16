@@ -33,6 +33,7 @@ class EvalCase:
     case_type: str = "baseline"
     expected_no_link: bool = False
     expects_alias_expansion: bool = False
+    expected_insight_presence: bool = False
 
 
 class FixtureNode:
@@ -190,6 +191,7 @@ def _as_cases(raw: Dict[str, Any]) -> List[EvalCase]:
             case_type=str(item.get("case_type", "baseline")),
             expected_no_link=bool(item.get("expected_no_link", False)),
             expects_alias_expansion=bool(item.get("expects_alias_expansion", False)),
+            expected_insight_presence=bool(item.get("expected_insight_presence", False)),
         )
         for item in raw.get("cases", [])
     ]
@@ -237,6 +239,9 @@ def run_eval(fixtures_dir: Path) -> int:
     false_positive_count = 0
     alias_cases_total = 0
     alias_success_count = 0
+    insight_presence_correct = 0
+    insight_correctness_sum = 0.0
+    cluster_quality_sum = 0.0
 
     print("\nSemantic Query Eval Report")
     print("=" * 72)
@@ -277,6 +282,17 @@ def run_eval(fixtures_dir: Path) -> int:
         if case.expects_alias_expansion:
             alias_cases_total += 1
             alias_success_count += int(bool(expected_entity_names.intersection(matched_entity_names)))
+        insight_present = bool(response.insights)
+        insight_presence_correct += int(insight_present == case.expected_insight_presence)
+        if response.insights:
+            support_count = sum(len(item.supporting_clusters) for item in response.insights)
+            insight_correctness_sum += min(1.0, support_count / max(1, len(response.insights) * 2))
+        cluster_quality = 0.0
+        if response.clusters:
+            cited_clusters = sum(1 for cluster in response.clusters if cluster.citation_count > 0)
+            avg_importance = sum(cluster.importance for cluster in response.clusters) / len(response.clusters)
+            cluster_quality = min(1.0, (0.6 * avg_importance) + (0.4 * (cited_clusters / len(response.clusters))))
+        cluster_quality_sum += cluster_quality
 
         intent_correct += int(intent_ok)
         evidence_presence_correct += int(evidence_ok)
@@ -303,6 +319,8 @@ def run_eval(fixtures_dir: Path) -> int:
             f"  cross-document hit: expected={case.expected_cross_document_hit} actual={cross_document_hit} "
             f"ok={cross_document_hit == case.expected_cross_document_hit}"
         )
+        print(f"  insight presence: expected={case.expected_insight_presence} actual={insight_present}")
+        print(f"  cluster quality score: {cluster_quality:.2f}")
         print("-" * 72)
 
     print("\nAggregate Metrics")
@@ -316,6 +334,9 @@ def run_eval(fixtures_dir: Path) -> int:
     print(f"Canonical link precision: {canonical_precision_sum / total:.2%}")
     print(f"Canonical entity reuse  : {canonical_reuse_sum / total:.2%}")
     print(f"Cross-doc hit presence  : {cross_document_hits / total:.2%}")
+    print(f"Insight presence rate   : {insight_presence_correct / total:.2%}")
+    print(f"Insight correctness     : {insight_correctness_sum / total:.2%}")
+    print(f"Cluster quality score   : {cluster_quality_sum / total:.2%}")
     if false_positive_total:
         print(f"False positive rate     : {false_positive_count / false_positive_total:.2%}")
         print(f"No-link correctness     : {no_link_correct / no_link_total:.2%}")

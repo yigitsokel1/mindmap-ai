@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Loader2, MessageSquare, FolderOpen, X } from "lucide-react";
+import { Send, Loader2, MessageSquare, FolderOpen, X, Lightbulb, Network } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
 import FileLibrary from "./FileLibrary";
 import { API_ENDPOINTS, PRESET_LABELS } from "../lib/constants";
@@ -10,7 +10,9 @@ import { resolveDocumentDisplayName } from "../lib/documentLabel";
 import type {
   GraphPreset,
   SemanticEvidenceItem,
+  SemanticEvidenceCluster,
   SemanticExplanation,
+  SemanticInsightItem,
   SemanticRelatedNode,
   SemanticQueryResponse,
 } from "../lib/types";
@@ -31,6 +33,9 @@ function normalizeSemanticResult(raw: Partial<SemanticQueryResponse>): SemanticQ
     evidence: Array.isArray(raw.evidence) ? raw.evidence : [],
     related_nodes: Array.isArray(raw.related_nodes) ? raw.related_nodes : [],
     citations: Array.isArray(raw.citations) ? raw.citations : [],
+    key_points: Array.isArray(raw.key_points) ? raw.key_points : [],
+    insights: Array.isArray(raw.insights) ? raw.insights : [],
+    clusters: Array.isArray(raw.clusters) ? raw.clusters : [],
     explanation: raw.explanation
       ? {
           why_these_entities: Array.isArray(raw.explanation.why_these_entities)
@@ -166,6 +171,63 @@ export default function CommandCenter() {
       },
     });
   };
+
+  const renderInsights = (insights: SemanticInsightItem[]) => (
+    <div className="space-y-2">
+      <p className="text-[10px] uppercase tracking-wide text-yellow-300 font-mono flex items-center gap-1">
+        <Lightbulb className="w-3 h-3" />
+        Insights
+      </p>
+      {insights.map((insight, idx) => (
+        <div key={`${insight.type}-${idx}`} className="bg-black/30 border border-white/10 rounded px-3 py-2">
+          <p className="text-[10px] text-yellow-300 font-mono">{insight.type}</p>
+          <p className="text-xs text-white/85 font-mono mt-1">{insight.text}</p>
+          <p className="text-[10px] text-white/60 font-mono mt-1">
+            confidence {insight.confidence.toFixed(2)} · supports {insight.supporting_clusters.length}
+          </p>
+        </div>
+      ))}
+      {insights.length === 0 && (
+        <div className="bg-black/30 border border-white/10 rounded px-3 py-2">
+          <p className="text-[10px] text-white/60 font-mono">No insight clusters were generated.</p>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderClusters = (clusters: SemanticEvidenceCluster[]) => (
+    <div className="space-y-2">
+      <p className="text-[10px] uppercase tracking-wide text-purple-300 font-mono flex items-center gap-1">
+        <Network className="w-3 h-3" />
+        Evidence (Clustered)
+      </p>
+      {clusters.map((cluster) => (
+        <div key={cluster.cluster_key} className="bg-black/30 border border-white/10 rounded px-3 py-2 space-y-2">
+          <p className="text-[10px] text-purple-300 font-mono">
+            {cluster.entity} · {cluster.relation_type}
+          </p>
+          <p className="text-[10px] text-white/60 font-mono">
+            frequency {cluster.canonical_frequency} · citations {cluster.citation_count} · importance{" "}
+            {cluster.importance.toFixed(2)}
+          </p>
+          {cluster.evidences.slice(0, 2).map((item, idx) => (
+            <button
+              key={`${cluster.cluster_key}-${idx}`}
+              onClick={() => handleEvidenceClick(item)}
+              className="w-full text-left bg-black/20 border border-white/10 rounded px-2 py-1"
+            >
+              <p className="text-[11px] text-white/80 font-mono line-clamp-2">{item.snippet || "No snippet."}</p>
+            </button>
+          ))}
+        </div>
+      ))}
+      {clusters.length === 0 && (
+        <div className="bg-black/30 border border-white/10 rounded px-3 py-2">
+          <p className="text-[10px] text-white/60 font-mono">No clustered evidence available.</p>
+        </div>
+      )}
+    </div>
+  );
 
   const handleCitationClick = (citation: SemanticQueryResponse["citations"][number]) => {
     const sourceDocument = citation.document_name ?? "Unknown document";
@@ -376,6 +438,17 @@ export default function CommandCenter() {
                     </ul>
                   </div>
                   <div className="bg-black/20 border border-white/10 rounded px-3 py-2">
+                    <p className="text-[10px] uppercase tracking-wide text-cyan-300 font-mono mb-2">Key Points</p>
+                    <ul className="space-y-1">
+                      {(semanticResult.key_points || []).map((point, idx) => (
+                        <li key={`key-point-${idx}`} className="text-[11px] text-white/80 font-mono">
+                          - {point}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  {renderInsights(semanticResult.insights || [])}
+                  <div className="bg-black/20 border border-white/10 rounded px-3 py-2">
                     <p className="text-[10px] uppercase tracking-wide text-cyan-300 font-mono mb-2">
                       Matched Entities
                     </p>
@@ -395,47 +468,7 @@ export default function CommandCenter() {
                       )}
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <p
-                      className="text-[10px] uppercase tracking-wide text-purple-300 font-mono"
-                      data-testid="top-evidence-heading"
-                    >
-                      Top Evidence
-                    </p>
-                    {semanticResult.evidence.map((item, idx) => (
-                      <button
-                        key={`${item.related_node_ids.join("-")}-${idx}`}
-                        onClick={() => handleEvidenceClick(item)}
-                        data-testid={`evidence-item-${idx}`}
-                        className="w-full text-left bg-black/30 border border-white/10 rounded px-3 py-2 hover:bg-white/5 transition-colors"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-[10px] uppercase font-mono text-purple-300">{item.relation_type}</p>
-                          {item.citation_label && (
-                            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded border border-cyan-500/40 text-cyan-300">
-                              {item.citation_label}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-white/80 font-mono mt-1 line-clamp-3">
-                          {item.snippet || "No snippet available."}
-                        </p>
-                        <p className="text-[10px] text-white/60 font-mono mt-1">
-                          {resolveDocumentDisplayName(
-                            item.document_name ?? undefined,
-                            undefined,
-                            item.document_id ?? "Unknown document"
-                          )}
-                          {item.page ? ` · page ${item.page}` : ""}
-                        </p>
-                      </button>
-                    ))}
-                    {semanticResult.evidence.length === 0 && (
-                      <div className="bg-black/30 border border-amber-500/30 rounded px-3 py-2">
-                        <p className="text-[10px] text-amber-200 font-mono">No supporting evidence found.</p>
-                      </div>
-                    )}
-                  </div>
+                  {renderClusters(semanticResult.clusters || [])}
                   <div className="space-y-2">
                     <p
                       className="text-[10px] uppercase tracking-wide text-purple-300 font-mono"

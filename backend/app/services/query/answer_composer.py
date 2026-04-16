@@ -3,9 +3,15 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional, Sequence
+from typing import List, Optional, Sequence
 
-from backend.app.schemas.semantic_query import CandidateEntity, CitationItem, SemanticEvidenceItem
+from backend.app.schemas.semantic_query import (
+    CandidateEntity,
+    CitationItem,
+    EvidenceClusterItem,
+    InsightItem,
+    SemanticEvidenceItem,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +74,45 @@ class AnswerComposer:
         if supported_fact:
             return f"{first_node} is grounded via {first.relation_type}. Evidence: {supported_fact}"
         return f"{first_node} is connected through {first.relation_type}."
+
+    def compose_key_points(
+        self,
+        query_intent: str,
+        clusters: Sequence[EvidenceClusterItem],
+        insights: Sequence[InsightItem],
+    ) -> List[str]:
+        points: List[str] = []
+        if clusters:
+            top_cluster = clusters[0]
+            points.append(
+                f"Primary cluster: {top_cluster.entity} - {top_cluster.relation_type} ({top_cluster.canonical_frequency} supports)."
+            )
+        if insights:
+            points.append(f"Top insight: {insights[0].text}")
+        if query_intent == "RELATION_LOOKUP":
+            points.append("Relations are grouped by canonical entity and relation type.")
+        elif query_intent == "METHOD_USAGE":
+            points.append("Usage patterns prioritize repeated evidence and citation-backed clusters.")
+        elif query_intent == "SUMMARY":
+            points.append("Summary is grounded by the highest-importance evidence clusters.")
+        return points[:3]
+
+    @staticmethod
+    def order_evidence(
+        evidence: Sequence[SemanticEvidenceItem],
+        clusters: Sequence[EvidenceClusterItem],
+    ) -> List[SemanticEvidenceItem]:
+        cluster_score = {cluster.cluster_key: (cluster.importance, cluster.citation_count) for cluster in clusters}
+        ordered = sorted(
+            evidence,
+            key=lambda item: (
+                cluster_score.get(item.cluster_key or "", (0.0, 0))[0],
+                cluster_score.get(item.cluster_key or "", (0.0, 0))[1],
+                item.confidence or 0.0,
+            ),
+            reverse=True,
+        )
+        return ordered
 
     @staticmethod
     def apply_guardrails(

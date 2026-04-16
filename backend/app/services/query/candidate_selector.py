@@ -41,17 +41,26 @@ class CandidateSelector:
                 intent=interpreted.intent,
             )
         canonical_candidates = self.reader.lookup_canonical_candidates(tokens)
+        disambiguation_terms = {term.lower() for term in interpreted.disambiguation_terms}
         merged_by_id: dict[str, CandidateEntity] = {}
         for candidate in [*local_candidates, *canonical_candidates]:
+            boosted_candidate = candidate
+            if disambiguation_terms and any(term in candidate.name.lower() for term in disambiguation_terms):
+                boosted_candidate = candidate.model_copy(
+                    update={
+                        "score": min(1.0, candidate.score + 0.1),
+                        "match_reason": f"{candidate.match_reason}|disambiguation_context",
+                    }
+                )
             existing = merged_by_id.get(candidate.entity_id)
             if existing is None:
-                merged_by_id[candidate.entity_id] = candidate
+                merged_by_id[candidate.entity_id] = boosted_candidate
                 continue
-            if candidate.score > existing.score:
-                merged_by_id[candidate.entity_id] = candidate
+            if boosted_candidate.score > existing.score:
+                merged_by_id[candidate.entity_id] = boosted_candidate
                 continue
-            if candidate.source == "canonical-ready" and existing.source != "canonical-ready":
-                merged_by_id[candidate.entity_id] = candidate
+            if boosted_candidate.source == "canonical-ready" and existing.source != "canonical-ready":
+                merged_by_id[candidate.entity_id] = boosted_candidate
         canonical_clusters: dict[str, CandidateEntity] = {}
         for item in sorted(merged_by_id.values(), key=lambda entry: entry.score, reverse=True):
             cluster_key = normalize_for_match(item.name) or item.entity_id

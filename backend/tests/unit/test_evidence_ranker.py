@@ -9,6 +9,7 @@ def _interpreted(intent: str) -> InterpretedQuestion:
         entity_hints=["transformer"],
         relation_hints=["use", "support"],
         document_constraints={},
+        disambiguation_terms=["transformer"],
     )
 
 

@@ -157,6 +157,23 @@ export interface SemanticCitationItem {
   document_name?: string | null;
 }
 
+export interface SemanticEvidenceCluster {
+  cluster_key: string;
+  entity: string;
+  relation_type: string;
+  evidences: SemanticEvidenceItem[];
+  canonical_frequency: number;
+  citation_count: number;
+  importance: number;
+}
+
+export interface SemanticInsightItem {
+  type: "COMMON_PATTERN" | "FREQUENT_RELATION" | "CROSS_DOCUMENT_TREND";
+  text: string;
+  confidence: number;
+  supporting_clusters: string[];
+}
+
 export interface SemanticRelatedNode {
   id: string;
   type: string;
@@ -179,6 +196,9 @@ export interface SemanticQueryResponse {
   related_nodes: SemanticRelatedNode[];
   citations: SemanticCitationItem[];
   explanation: SemanticExplanation;
+  key_points?: string[];
+  insights?: SemanticInsightItem[];
+  clusters?: SemanticEvidenceCluster[];
   confidence: number;
   limited_evidence?: boolean;
   uncertainty_signal?: boolean;

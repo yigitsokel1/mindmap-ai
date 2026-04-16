@@ -108,7 +108,7 @@ class SemanticQueryReader:
         per_candidate_limit = traversal_plan.max_evidence_per_candidate
 
         for candidate in candidates:
-            query = """
+            one_hop_query = """
             MATCH (n)-[:OUT_REL]->(ri:RelationInstance)
             WHERE elementId(n) = $node_id
             OPTIONAL MATCH (ev:Evidence)-[:SUPPORTS]->(ri)
@@ -132,7 +132,7 @@ class SemanticQueryReader:
             LIMIT $limit
             """
             records, _, _ = self.db.driver.execute_query(  # type: ignore[union-attr]
-                query,
+                one_hop_query,
                 {
                     "node_id": candidate.entity_id,
                     "limit": per_candidate_limit,
@@ -140,6 +140,40 @@ class SemanticQueryReader:
                     "prioritize_citations": traversal_plan.prioritize_citations,
                 },
             )
+            if traversal_plan.max_depth >= 2:
+                two_hop_query = """
+                MATCH (n)-[:OUT_REL]->(ri1:RelationInstance)
+                WHERE elementId(n) = $node_id
+                OPTIONAL MATCH (ri1)-[:OUT_REL]->(mid)
+                OPTIONAL MATCH (mid)-[:OUT_REL]->(ri:RelationInstance)
+                OPTIONAL MATCH (ev:Evidence)-[:SUPPORTS]->(ri)
+                OPTIONAL MATCH (ev)-[:FROM_PASSAGE]->(p:Passage)
+                OPTIONAL MATCH (sec:Section)-[:HAS_PASSAGE]->(p)
+                OPTIONAL MATCH (d:Document)-[:HAS_SECTION]->(:Section)-[:HAS_PASSAGE]->(p)
+                WITH ri, ev, p, d, sec
+                WHERE ri IS NOT NULL
+                  AND ($document_id IS NULL OR d.uid = $document_id)
+                OPTIONAL MATCH (p)-[:HAS_INLINE_CITATION]->(ic:InlineCitation)
+                OPTIONAL MATCH (ic)-[:REFERS_TO]->(ref:ReferenceEntry)
+                RETURN ri, ev, p, d, sec, ic, ref
+                ORDER BY
+                    CASE
+                        WHEN $prioritize_citations AND (ic IS NOT NULL OR ref IS NOT NULL) THEN 1
+                        ELSE 0
+                    END DESC,
+                    coalesce(ev.confidence, ri.confidence, 0.0) DESC
+                LIMIT $limit
+                """
+                two_hop_records, _, _ = self.db.driver.execute_query(  # type: ignore[union-attr]
+                    two_hop_query,
+                    {
+                        "node_id": candidate.entity_id,
+                        "limit": per_candidate_limit,
+                        "document_id": document_id,
+                        "prioritize_citations": traversal_plan.prioritize_citations,
+                    },
+                )
+                records.extend(two_hop_records)
             for item in records:
                 relation_instance = item.get("ri")
                 evidence = item.get("ev")

@@ -89,6 +89,9 @@ def test_semantic_query_service_builds_grounded_answer(monkeypatch):
     assert result.explanation.reasoning_path
     assert result.explanation.selection_signals
     assert len(result.citations) == 1
+    assert isinstance(result.clusters, list)
+    assert isinstance(result.insights, list)
+    assert isinstance(result.key_points, list)
     assert result.confidence > 0
     assert result.limited_evidence is True
     assert result.uncertainty_signal is True
@@ -103,7 +106,7 @@ def test_semantic_query_service_uses_current_schema_edges(monkeypatch):
     service = SemanticQueryService()
     service.answer(SemanticQueryRequest(question="what evidence supports transformer?"))
 
-    assert "MATCH (n)-[:OUT_REL]->(ri:RelationInstance)" in fake_db.driver.last_query
+    assert "MATCH (n)-[:OUT_REL]->" in fake_db.driver.last_query
     assert "[:SUPPORTS]" in fake_db.driver.last_query
     assert "[:FROM_PASSAGE]" in fake_db.driver.last_query
     assert "[:HAS_SECTION]" in fake_db.driver.last_query

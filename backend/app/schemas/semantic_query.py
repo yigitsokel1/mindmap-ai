@@ -26,6 +26,7 @@ class SemanticEvidenceItem(BaseModel):
     document_name: Optional[str] = None
     citation_label: Optional[str] = None
     reference_entry_id: Optional[str] = None
+    cluster_key: Optional[str] = None
 
 
 class RelatedNodeItem(BaseModel):
@@ -64,6 +65,23 @@ class QueryExplanation(BaseModel):
     selection_signals: List[str] = Field(default_factory=list)
 
 
+class EvidenceClusterItem(BaseModel):
+    cluster_key: str
+    entity: str
+    relation_type: str
+    evidences: List[SemanticEvidenceItem] = Field(default_factory=list)
+    canonical_frequency: int = 0
+    citation_count: int = 0
+    importance: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
+class InsightItem(BaseModel):
+    type: Literal["COMMON_PATTERN", "FREQUENT_RELATION", "CROSS_DOCUMENT_TREND"]
+    text: str
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    supporting_clusters: List[str] = Field(default_factory=list)
+
+
 class SemanticQueryAnswer(BaseModel):
     answer: str
     query_intent: str = "SUMMARY"
@@ -72,6 +90,9 @@ class SemanticQueryAnswer(BaseModel):
     related_nodes: List[RelatedNodeItem] = Field(default_factory=list)
     citations: List[CitationItem] = Field(default_factory=list)
     explanation: QueryExplanation = Field(default_factory=QueryExplanation)
+    key_points: List[str] = Field(default_factory=list)
+    insights: List[InsightItem] = Field(default_factory=list)
+    clusters: List[EvidenceClusterItem] = Field(default_factory=list)
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     limited_evidence: bool = False
     uncertainty_signal: bool = False

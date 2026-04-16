@@ -47,6 +47,7 @@ def test_candidate_selector_prefers_canonical_and_deduplicates():
         entity_hints=["transformer"],
         relation_hints=[],
         document_constraints={},
+        disambiguation_terms=["transformer"],
     )
     result = selector.select_candidates(
         question="Transformer hangi paperlarda geciyor?",

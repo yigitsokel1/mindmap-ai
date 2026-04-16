@@ -17,10 +17,14 @@ class TraversalPlan:
     prioritize_citations: bool
     max_candidate_nodes: int
     max_evidence_per_candidate: int
+    max_depth: int
+    relation_whitelist: List[str]
 
 
 class TraversalPlanner:
     """Maps interpreted question intent to deterministic traversal plans."""
+
+    _RELATION_WHITELIST = ["USES", "IMPROVES", "BASED_ON", "APPLIED_TO"]
 
     def build_plan(self, interpreted: InterpretedQuestion, max_evidence: int) -> TraversalPlan:
         intent = interpreted.intent
@@ -31,6 +35,8 @@ class TraversalPlanner:
                 prioritize_citations=False,
                 max_candidate_nodes=25,
                 max_evidence_per_candidate=max(2, min(max_evidence, 8)),
+                max_depth=2,
+                relation_whitelist=self._RELATION_WHITELIST,
             )
         if intent == "CITATION_BASIS":
             return TraversalPlan(
@@ -39,6 +45,8 @@ class TraversalPlanner:
                 prioritize_citations=True,
                 max_candidate_nodes=20,
                 max_evidence_per_candidate=max(3, min(max_evidence + 1, 10)),
+                max_depth=1,
+                relation_whitelist=self._RELATION_WHITELIST,
             )
         if intent == "RELATION_LOOKUP":
             return TraversalPlan(
@@ -47,6 +55,8 @@ class TraversalPlanner:
                 prioritize_citations=False,
                 max_candidate_nodes=20,
                 max_evidence_per_candidate=max(2, min(max_evidence, 7)),
+                max_depth=2,
+                relation_whitelist=self._RELATION_WHITELIST,
             )
         if intent == "PROBLEM":
             return TraversalPlan(
@@ -55,6 +65,8 @@ class TraversalPlanner:
                 prioritize_citations=False,
                 max_candidate_nodes=18,
                 max_evidence_per_candidate=max(2, min(max_evidence, 6)),
+                max_depth=1,
+                relation_whitelist=self._RELATION_WHITELIST,
             )
         return TraversalPlan(
             strategy="broad_summary_sweep",
@@ -62,4 +74,6 @@ class TraversalPlanner:
             prioritize_citations=False,
             max_candidate_nodes=18,
             max_evidence_per_candidate=max(2, min(max_evidence, 6)),
+            max_depth=1,
+            relation_whitelist=self._RELATION_WHITELIST,
         )

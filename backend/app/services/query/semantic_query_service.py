@@ -16,9 +16,12 @@ from backend.app.schemas.semantic_query import (
 from backend.app.services.query.answer_composer import AnswerComposer
 from backend.app.services.query.candidate_selector import CandidateSelector
 from backend.app.services.query.evidence_ranker import EvidenceRanker
+from backend.app.services.query.evidence_clusterer import EvidenceClusterer
 from backend.app.services.query.explanation_builder import ExplanationBuilder
+from backend.app.services.query.insight_builder import InsightBuilder
 from backend.app.services.query.question_interpreter import InterpretedQuestion, QuestionInterpreter
 from backend.app.services.query.semantic_query_reader import SemanticQueryReader
+from backend.app.services.query.traversal_executor import TraversalExecutor
 from backend.app.services.query.traversal_planner import TraversalPlan, TraversalPlanner
 
 
@@ -39,7 +42,10 @@ class SemanticQueryService:
         self.interpreter = QuestionInterpreter()
         self.traversal_planner = TraversalPlanner()
         self.evidence_ranker = EvidenceRanker()
+        self.evidence_clusterer = EvidenceClusterer()
+        self.insight_builder = InsightBuilder()
         self.reader = SemanticQueryReader(self.db)
+        self.traversal_executor = TraversalExecutor()
         self.candidate_selector = CandidateSelector(self.reader)
         self.answer_composer = AnswerComposer()
         self.explanation_builder = ExplanationBuilder()
@@ -63,7 +69,8 @@ class SemanticQueryService:
                 node_types=request.node_types,
             )
             traversal_plan = self.decide_traversal_scope(request, interpreted)
-            evidence = self.reader.collect_evidence(
+            evidence = self.traversal_executor.execute(
+                reader=self.reader,
                 candidates=candidate_entities,
                 max_evidence=request.max_evidence,
                 document_id=request.document_id,
@@ -75,6 +82,14 @@ class SemanticQueryService:
                 evidence,
                 request.max_evidence,
             )
+            clusters = self.evidence_clusterer.build_clusters(ranked_evidence, candidate_entities)
+            insights = self.insight_builder.build(clusters)
+            if clusters:
+                clustered_evidence = [evidence_item for cluster in clusters for evidence_item in cluster.evidences]
+                ranked_evidence = self.answer_composer.order_evidence(clustered_evidence, clusters)
+            else:
+                ranked_evidence = self.answer_composer.order_evidence(ranked_evidence, clusters)
+            key_points = self.answer_composer.compose_key_points(interpreted.intent, clusters, insights)
             citations = self._collect_citations(ranked_evidence, request.include_citations)
             related_nodes = self.candidate_selector.to_related_nodes(candidate_entities)
             answer_text = self.answer_composer.compose(
@@ -116,6 +131,9 @@ class SemanticQueryService:
                 related_nodes=related_nodes,
                 citations=citations,
                 explanation=explanation,
+                key_points=key_points,
+                insights=insights,
+                clusters=clusters,
                 confidence=confidence,
                 limited_evidence=limited_evidence,
                 uncertainty_signal=uncertainty_signal,
