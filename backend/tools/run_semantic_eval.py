@@ -29,6 +29,7 @@ class EvalCase:
     expected_sections: List[str]
     expected_citation_presence: bool
     expected_keywords: List[str]
+    expected_cross_document_hit: bool = False
 
 
 class FixtureNode:
@@ -100,35 +101,62 @@ class FixtureSemanticQueryReader(SemanticQueryReader):
         document_id: str | None,
         traversal_plan: Any,  # noqa: ARG002
     ) -> List[SemanticEvidenceItem]:
-        if not document_id:
-            return []
-        doc = self._fixtures.get(document_id)
-        if not doc:
-            return []
-
         candidate_ids = {candidate.entity_id for candidate in candidates}
         items: List[SemanticEvidenceItem] = []
-        for idx, evidence in enumerate(doc.get("evidence", [])):
-            entity_id = str(evidence.get("entity_id"))
-            if candidate_ids and entity_id not in candidate_ids:
+        docs = []
+        if document_id and document_id in self._fixtures:
+            docs.append((document_id, self._fixtures[document_id]))
+        for key, doc in self._fixtures.items():
+            if key == document_id:
                 continue
-            items.append(
-                SemanticEvidenceItem(
-                    relation_type=str(evidence.get("relation_type", "RELATED_TO")),
-                    page=evidence.get("page"),
-                    snippet=str(evidence.get("snippet", "")),
-                    section=evidence.get("section"),
-                    confidence=0.82,
-                    related_node_ids=[entity_id, f"ri-{document_id}-{idx}"],
-                    document_id=document_id,
-                    document_name=str(doc.get("name", "")),
-                    citation_label=evidence.get("citation_label"),
-                    reference_entry_id=evidence.get("reference_entry_id"),
+            docs.append((key, doc))
+
+        for doc_id, doc in docs:
+            for idx, evidence in enumerate(doc.get("evidence", [])):
+                entity_id = str(evidence.get("entity_id"))
+                if candidate_ids and entity_id not in candidate_ids:
+                    continue
+                items.append(
+                    SemanticEvidenceItem(
+                        relation_type=str(evidence.get("relation_type", "RELATED_TO")),
+                        page=evidence.get("page"),
+                        snippet=str(evidence.get("snippet", "")),
+                        section=evidence.get("section"),
+                        confidence=0.82,
+                        related_node_ids=[entity_id, f"ri-{doc_id}-{idx}"],
+                        document_id=doc_id,
+                        document_name=str(doc.get("name", "")),
+                        citation_label=evidence.get("citation_label"),
+                        reference_entry_id=evidence.get("reference_entry_id"),
+                    )
                 )
-            )
-            if len(items) >= max_evidence:
-                break
+                if len(items) >= max_evidence:
+                    return items
         return items
+
+    def lookup_canonical_candidates(self, tokens: Sequence[str]) -> List[CandidateEntity]:
+        token_set = {token.lower() for token in tokens}
+        if not token_set:
+            return []
+        candidates: List[CandidateEntity] = []
+        for doc in self._fixtures.values():
+            for entity in doc.get("entities", []):
+                aliases = [str(alias).lower() for alias in entity.get("aliases", [])]
+                canonical = str(entity.get("canonical_name", entity.get("display_name", ""))).lower()
+                acronym = str(entity.get("acronym", "")).lower()
+                if not token_set.intersection(set(aliases + [canonical, acronym])):
+                    continue
+                candidates.append(
+                    CandidateEntity(
+                        entity_id=str(entity["id"]),
+                        type=str(entity["type"]),
+                        name=str(entity["display_name"]),
+                        score=0.9,
+                        match_reason="fixture_canonical_match",
+                        source="canonical-ready",
+                    )
+                )
+        return candidates
 
 
 class FixtureSemanticQueryService(SemanticQueryService):
@@ -155,6 +183,7 @@ def _as_cases(raw: Dict[str, Any]) -> List[EvalCase]:
             expected_sections=[str(v) for v in item.get("expected_sections", [])],
             expected_citation_presence=bool(item.get("expected_citation_presence", False)),
             expected_keywords=[str(v) for v in item.get("expected_keywords", [])],
+            expected_cross_document_hit=bool(item.get("expected_cross_document_hit", False)),
         )
         for item in raw.get("cases", [])
     ]
@@ -193,6 +222,9 @@ def run_eval(fixtures_dir: Path) -> int:
     section_hits = 0
     keyword_ratio_sum = 0.0
     entity_recall_sum = 0.0
+    canonical_precision_sum = 0.0
+    canonical_reuse_sum = 0.0
+    cross_document_hits = 0
 
     print("\nSemantic Query Eval Report")
     print("=" * 72)
@@ -217,6 +249,11 @@ def run_eval(fixtures_dir: Path) -> int:
             case.expected_entities,
             [item.display_name for item in response.matched_entities],
         )
+        canonical_matches = [item for item in response.matched_entities if item.display_name in case.expected_entities]
+        canonical_precision = (len(canonical_matches) / len(response.matched_entities)) if response.matched_entities else 0.0
+        matched_docs = {ev.document_id for ev in response.evidence if ev.document_id}
+        cross_document_hit = len(matched_docs) > 1
+        reuse_rate = len({item.display_name for item in response.matched_entities}) / len(response.matched_entities) if response.matched_entities else 0.0
 
         intent_correct += int(intent_ok)
         evidence_presence_correct += int(evidence_ok)
@@ -224,6 +261,9 @@ def run_eval(fixtures_dir: Path) -> int:
         section_hits += int(section_ok)
         keyword_ratio_sum += keyword_ratio
         entity_recall_sum += recall
+        canonical_precision_sum += canonical_precision
+        canonical_reuse_sum += reuse_rate
+        cross_document_hits += int(cross_document_hit == case.expected_cross_document_hit)
 
         print(f"[{case.case_id}]")
         print(f"  intent:   expected={case.expected_intent} actual={response.query_intent} ok={intent_ok}")
@@ -234,6 +274,12 @@ def run_eval(fixtures_dir: Path) -> int:
         print(f"  sections: expected={case.expected_sections} actual={sorted(actual_section_set)} ok={section_ok}")
         print(f"  keywords: ratio={keyword_ratio:.2f} expected={case.expected_keywords}")
         print(f"  entities: recall={recall:.2f} expected={case.expected_entities}")
+        print(f"  canonical precision: {canonical_precision:.2f}")
+        print(f"  canonical reuse rate: {reuse_rate:.2f}")
+        print(
+            f"  cross-document hit: expected={case.expected_cross_document_hit} actual={cross_document_hit} "
+            f"ok={cross_document_hit == case.expected_cross_document_hit}"
+        )
         print("-" * 72)
 
     print("\nAggregate Metrics")
@@ -244,6 +290,9 @@ def run_eval(fixtures_dir: Path) -> int:
     print(f"Section coverage        : {section_hits / total:.2%}")
     print(f"Keyword hit ratio       : {keyword_ratio_sum / total:.2%}")
     print(f"Matched entity recall   : {entity_recall_sum / total:.2%}")
+    print(f"Canonical link precision: {canonical_precision_sum / total:.2%}")
+    print(f"Canonical entity reuse  : {canonical_reuse_sum / total:.2%}")
+    print(f"Cross-doc hit presence  : {cross_document_hits / total:.2%}")
     return 0
 
 

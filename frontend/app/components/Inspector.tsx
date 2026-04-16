@@ -29,12 +29,13 @@ export default function Inspector() {
       setNodeDetail(null);
       return;
     }
+    const scopedDocumentId = selectedNodeContext?.label === "Citation" ? selectedDocumentId || undefined : undefined;
     let cancelled = false;
     const loadNodeDetail = async () => {
       setIsLoadingNodeDetail(true);
       setNodeDetailError(null);
       try {
-        const response = await fetch(API_ENDPOINTS.GRAPH_NODE_DETAIL(contextId, selectedDocumentId || undefined));
+        const response = await fetch(API_ENDPOINTS.GRAPH_NODE_DETAIL(contextId, scopedDocumentId));
         if (!response.ok) {
           throw new Error("Node detail fetch failed");
         }
@@ -57,7 +58,7 @@ export default function Inspector() {
     return () => {
       cancelled = true;
     };
-  }, [selectedNodeContext?.id, selectedDocumentId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedNodeContext?.id, selectedNodeContext?.label, selectedDocumentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pdfUrlWithPage: string | undefined = pdfUrl
     ? (pdfPage ? `${pdfUrl}#page=${pdfPage}` : pdfUrl)
@@ -247,6 +248,43 @@ export default function Inspector() {
                     {!Array.isArray(contextDetails.citations) && (
                       <p className="text-[10px] text-white/50 font-mono mb-3">No linked citations available.</p>
                     )}
+                    {(
+                      contextDetails.linked_canonical_entity as Record<string, unknown> | undefined
+                    ) && (
+                      <div className="mb-3">
+                        <p className="text-[10px] text-cyan-300 font-mono uppercase mb-1">Canonical Link</p>
+                        <p className="text-[10px] text-white/80 font-mono">
+                          {String(
+                            (
+                              contextDetails.linked_canonical_entity as Record<string, unknown>
+                            ).canonical_name || "Unknown canonical"
+                          )}
+                        </p>
+                        <p className="text-[10px] text-white/60 font-mono">
+                          Appears in {Number(contextDetails.appears_in_documents || 0)} documents
+                        </p>
+                      </div>
+                    )}
+                    {Array.isArray(contextDetails.canonical_aliases) &&
+                      (contextDetails.canonical_aliases as string[]).length > 0 && (
+                        <div className="mb-3">
+                          <p className="text-[10px] text-cyan-300 font-mono uppercase mb-1">Aliases</p>
+                          <p className="text-[10px] text-white/70 font-mono">
+                            {(contextDetails.canonical_aliases as string[]).slice(0, 8).join(", ")}
+                          </p>
+                        </div>
+                      )}
+                    {Array.isArray(contextDetails.top_related_documents) &&
+                      (contextDetails.top_related_documents as string[]).length > 0 && (
+                        <div className="mb-3">
+                          <p className="text-[10px] text-cyan-300 font-mono uppercase mb-1">Top Related Documents</p>
+                          {(contextDetails.top_related_documents as string[]).slice(0, 5).map((doc, idx) => (
+                            <p key={`related-doc-${idx}`} className="text-[10px] text-white/70 font-mono">
+                              {doc}
+                            </p>
+                          ))}
+                        </div>
+                      )}
                     <pre className="text-[10px] text-white/60 font-mono whitespace-pre-wrap wrap-break-word">
                       {JSON.stringify(contextDetails, null, 2)}
                     </pre>

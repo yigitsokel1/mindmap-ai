@@ -38,6 +38,7 @@ class SemanticGraphReader:
         "Task",
         "Author",
         "Institution",
+        "CanonicalEntity",
         "RelationInstance",
     }
     STRUCTURAL_NODE_TYPES: Set[str] = {"Document", "Section"}
@@ -107,6 +108,7 @@ class SemanticGraphReader:
             incoming=self._group_relations(incoming),
             outgoing=self._group_relations(outgoing),
         )
+        canonical_info = self._load_canonical_details(node_id)
         summary = self._build_node_summary(
             node_type=node_type,
             node_name=node_name,
@@ -115,6 +117,7 @@ class SemanticGraphReader:
             evidences=evidences,
             citations=citations,
             metadata=metadata,
+            canonical_info=canonical_info,
         )
 
         return NodeDetail(
@@ -127,6 +130,10 @@ class SemanticGraphReader:
             grouped_relations=grouped_relations,
             evidences=evidences,
             citations=citations,
+            linked_canonical_entity=canonical_info.get("canonical"),
+            canonical_aliases=canonical_info.get("aliases", []),
+            appears_in_documents=int(canonical_info.get("document_count", 0)),
+            top_related_documents=canonical_info.get("top_documents", []),
         )
 
     # Query candidate reads (extension-ready for canonical linking)
@@ -172,9 +179,59 @@ class SemanticGraphReader:
         )
         return records
 
-    def read_canonical_lookup_candidates(self, _: List[str]) -> List[Dict[str, Any]]:
-        """Reserved read contract for future cross-document canonical lookup."""
-        return []
+    def read_canonical_lookup_candidates(self, tokens: List[str]) -> List[Dict[str, Any]]:
+        """Read local entities via canonical name and alias lookup."""
+        if not tokens:
+            return []
+        query = """
+        MATCH (e)-[:INSTANCE_OF_CANONICAL]->(c:CanonicalEntity)
+        WHERE any(token IN $tokens WHERE
+            toLower(coalesce(c.canonical_name, "")) CONTAINS token
+            OR token IN coalesce(c.normalized_aliases, [])
+            OR token IN coalesce(c.acronyms, [])
+        )
+        RETURN DISTINCT e, c
+        LIMIT 20
+        """
+        records, _, _ = self.db.driver.execute_query(  # type: ignore[union-attr]
+            query,
+            {"tokens": [token.lower() for token in tokens]},
+        )
+        return records
+
+    def _load_canonical_details(self, node_id: str) -> Dict[str, Any]:
+        query = """
+        MATCH (n)
+        WHERE elementId(n) = $node_id
+        OPTIONAL MATCH (n)-[:INSTANCE_OF_CANONICAL]->(c:CanonicalEntity)
+        OPTIONAL MATCH (peer)-[:INSTANCE_OF_CANONICAL]->(c)
+        OPTIONAL MATCH (peer)-[:OUT_REL]->(:RelationInstance)<-[:SUPPORTS]-(:Evidence)-[:FROM_PASSAGE]->(:Passage)<-[:HAS_PASSAGE]-(:Section)<-[:HAS_SECTION]-(d:Document)
+        WITH c, collect(DISTINCT d.title) AS doc_titles, count(DISTINCT d) AS doc_count
+        RETURN c, doc_titles, doc_count
+        LIMIT 1
+        """
+        records, _, _ = self.db.driver.execute_query(  # type: ignore[union-attr]
+            query,
+            {"node_id": node_id},
+        )
+        if not records:
+            return {"canonical": None, "aliases": [], "document_count": 0, "top_documents": []}
+        record = records[0]
+        canonical = record.get("c")
+        if canonical is None:
+            return {"canonical": None, "aliases": [], "document_count": 0, "top_documents": []}
+        canonical_payload = {
+            "uid": str(canonical.get("uid") or ""),
+            "entity_type": str(canonical.get("entity_type") or ""),
+            "canonical_name": str(canonical.get("canonical_name") or ""),
+        }
+        doc_titles = [str(item) for item in record.get("doc_titles", []) if item]
+        return {
+            "canonical": canonical_payload,
+            "aliases": [str(item) for item in canonical.get("aliases", []) if item][:20],
+            "document_count": int(record.get("doc_count") or 0),
+            "top_documents": doc_titles[:5],
+        }
 
     def _resolve_labels(self, filters: SemanticGraphFilters) -> Set[str]:
         labels = set(self.BASE_NODE_TYPES)
@@ -479,6 +536,7 @@ class SemanticGraphReader:
         evidences: List[NodeEvidenceItem],
         citations: List[NodeCitationItem],
         metadata: Dict[str, str | int | float | bool | None],
+        canonical_info: Dict[str, Any],
     ) -> str:
         total_relations = len(incoming) + len(outgoing)
         top_outgoing = outgoing[0].type if outgoing else "none"
@@ -488,17 +546,25 @@ class SemanticGraphReader:
         importance_score = total_relations + len(evidences) + (2 * len(citations))
         priority = "high" if importance_score >= 10 else "medium" if importance_score >= 5 else "low"
         existing_summary = str(metadata.get("summary") or metadata.get("description") or "").strip()
+        canonical_hint = ""
+        canonical_payload = canonical_info.get("canonical")
+        if canonical_payload:
+            canonical_hint = (
+                f" Canonical identity '{canonical_payload.get('canonical_name', 'unknown')}' is linked "
+                f"across {int(canonical_info.get('document_count', 0))} document(s)."
+            )
         if existing_summary:
             return (
                 f"{existing_summary} Node '{node_name}' ({node_type}) has {total_relations} relation(s), "
                 f"dominant outgoing '{top_outgoing}', dominant incoming '{top_incoming}', appears in {doc_hint}, "
                 f"and has {priority} explainability importance based on relation/evidence/citation density."
+                f"{canonical_hint}"
             )
         return (
             f"Node '{node_name}' is a {node_type} with {total_relations} relation(s). "
             f"Dominant outgoing relation is '{top_outgoing}' and dominant incoming relation is '{top_incoming}'. "
             f"It appears in {doc_hint} and has {priority} explainability importance "
-            f"(evidence={len(evidences)}, citations={len(citations)})."
+            f"(evidence={len(evidences)}, citations={len(citations)}).{canonical_hint}"
         )
 
     @staticmethod

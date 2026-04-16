@@ -19,9 +19,11 @@ from backend.app.schemas.document_structure import ReferenceRecord, SectionRecor
 from backend.app.schemas.extraction import ExtractionResult
 from backend.app.schemas.passage import PassageRecord
 from backend.app.services.graph.writers.citation_writer import CitationWriter
+from backend.app.services.graph.writers.canonical_writer import CanonicalWriter
 from backend.app.services.graph.writers.document_writer import DocumentStructureWriter
 from backend.app.services.graph.writers.entity_writer import EntityWriter
 from backend.app.services.graph.writers.relation_writer import RelationWriter
+from backend.app.services.normalization.entity_linker import LinkDecision, build_canonical_payload
 from neo4j.exceptions import ServiceUnavailable, SessionExpired, TransientError
 
 logger = logging.getLogger(__name__)
@@ -38,6 +40,7 @@ class GraphWriter:
         self.db = Neo4jDatabase()
         self.document_writer = DocumentStructureWriter()
         self.entity_writer = EntityWriter()
+        self.canonical_writer = CanonicalWriter()
         self.relation_writer = RelationWriter()
         self.citation_writer = CitationWriter()
 
@@ -79,6 +82,7 @@ class GraphWriter:
                 write_result = self.entity_writer.write_entity(session, entity, uid)
                 if write_result["status"] != "skipped":
                     entity_count += 1
+                self._write_canonical_link(session, entity, uid)
 
             # --- Relation + Evidence writes ---
             for rel in extraction.relations:
@@ -142,6 +146,7 @@ class GraphWriter:
                             write_result = self.entity_writer.write_entity(session, entity, uid)
                             if write_result["status"] != "skipped":
                                 entities_written += 1
+                            self._write_canonical_link(session, entity, uid)
                         for rel in extraction.relations:
                             source_uid = build_entity_uid(
                                 self.relation_writer.find_entity_type(extraction, rel.source),
@@ -183,6 +188,25 @@ class GraphWriter:
                     exc,
                 )
                 time.sleep(delay_s)
+
+    def _write_canonical_link(self, session, entity, entity_uid: str) -> None:
+        canonical_id = entity.canonical_id
+        if not canonical_id:
+            fallback_name = entity.canonical_name or entity.name
+            canonical_id = build_entity_uid(f"canonical_{entity.type}", fallback_name)
+        decision = LinkDecision(
+            canonical_id=canonical_id,
+            matched=bool(entity.canonical_linked),
+            link_reason=entity.canonical_link_reason or "writer_fallback",
+            link_confidence=float(entity.canonical_link_confidence or 0.0),
+            created_new=bool(entity.canonical_created_new),
+            canonical_name=entity.canonical_name or entity.name,
+            normalized_name=(entity.canonical_name or entity.name).lower(),
+            aliases=entity.aliases or [],
+        )
+        payload = build_canonical_payload(entity, decision)
+        self.canonical_writer.write_canonical(session, payload)
+        self.canonical_writer.link_instance(session, entity_uid=entity_uid, canonical_id=canonical_id)
 
     def write_sections(self, sections: list[SectionRecord], document_id: str):
         """Write Section nodes and link to Document."""

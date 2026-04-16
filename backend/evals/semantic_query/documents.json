@@ -4,7 +4,13 @@
       "id": "doc-transformer",
       "name": "transformer_paper.pdf",
       "entities": [
-        { "id": "m-transformer", "type": "Method", "display_name": "Transformer" },
+        {
+          "id": "m-transformer",
+          "type": "Method",
+          "display_name": "Transformer",
+          "canonical_name": "Transformer",
+          "aliases": ["transformer architecture", "attention is all you need model"]
+        },
         { "id": "c-self-attention", "type": "Concept", "display_name": "Self-Attention" },
         { "id": "t-machine-translation", "type": "Task", "display_name": "Machine Translation" }
       ],
@@ -58,9 +64,16 @@
       "id": "doc-rag",
       "name": "rag_systems.pdf",
       "entities": [
-        { "id": "m-rag", "type": "Method", "display_name": "Retrieval-Augmented Generation" },
-        { "id": "d-faiss", "type": "Dataset", "display_name": "FAISS Index" },
-        { "id": "m-cross-encoder", "type": "Method", "display_name": "Cross Encoder Re-ranker" }
+        {
+          "id": "m-rag",
+          "type": "Method",
+          "display_name": "Retrieval-Augmented Generation",
+          "canonical_name": "Retrieval-Augmented Generation",
+          "aliases": ["RAG"],
+          "acronym": "rag"
+        },
+        { "id": "d-faiss", "type": "Dataset", "display_name": "FAISS Index", "aliases": ["faiss"] },
+        { "id": "m-cross-encoder", "type": "Method", "display_name": "Cross Encoder Re-ranker", "aliases": ["cross encoder reranker"] }
       ],
       "evidence": [
         {
@@ -95,6 +108,36 @@
           "snippet": "The approach outperforms baseline variants in internal ablation studies.",
           "section": "Results",
           "page": 6
+        }
+      ]
+    },
+    {
+      "id": "doc-transformer-variants",
+      "name": "transformer_variants.pdf",
+      "entities": [
+        {
+          "id": "m-transformer-v2",
+          "type": "Method",
+          "display_name": "Transformer Architecture",
+          "canonical_name": "Transformer",
+          "aliases": ["transformer", "self-attention model"]
+        },
+        { "id": "d-wmt14", "type": "Dataset", "display_name": "WMT14 English-German", "aliases": ["wmt 2014 en-de"] }
+      ],
+      "evidence": [
+        {
+          "entity_id": "m-transformer-v2",
+          "relation_type": "USES",
+          "snippet": "The transformer architecture is evaluated with the same attention backbone.",
+          "section": "Methods",
+          "page": 2
+        },
+        {
+          "entity_id": "d-wmt14",
+          "relation_type": "EVALUATED_ON",
+          "snippet": "Experiments are reported on WMT14 English-German benchmark data.",
+          "section": "Dataset",
+          "page": 4
         }
       ]
     },

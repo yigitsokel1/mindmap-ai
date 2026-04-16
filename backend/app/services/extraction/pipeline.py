@@ -20,6 +20,7 @@ from typing import Any
 
 from backend.app.services.extraction.llm_extractor import LLMExtractor
 from backend.app.services.normalization.entity_normalizer import normalize_entities
+from backend.app.services.normalization.entity_linker import EntityLinker
 from backend.app.services.normalization.relation_normalizer import normalize_relations
 from backend.app.services.graph.graph_writer import GraphWriter
 from backend.app.schemas.citation import InlineCitationRecord
@@ -58,6 +59,7 @@ class ExtractionPipeline:
 
     def __init__(self, model: str = "gpt-4.1"):
         self.extractor = LLMExtractor(model=model)
+        self.entity_linker = EntityLinker()
         self.writer = GraphWriter()
 
     def run(
@@ -271,6 +273,7 @@ class ExtractionPipeline:
                         raw_relation_count = len(extraction.relations)
                         normalization_started_at = perf_counter()
                         extraction, name_map = normalize_entities(extraction)
+                        extraction, name_map = self.entity_linker.link_extraction(extraction, name_map)
                         extraction = normalize_relations(extraction, name_map)
                         normalization_duration_ms = int((perf_counter() - normalization_started_at) * 1000)
                         total_duration_ms = int((perf_counter() - batch_started_at) * 1000)

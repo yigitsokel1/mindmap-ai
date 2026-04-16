@@ -197,7 +197,6 @@ export default function CommandCenter() {
       id: entity.id,
       label: entity.type,
       title: entity.display_name,
-      documentName: selectedDocumentId || undefined,
       rawText: `Inspecting entity: ${entity.display_name}`,
     });
   };

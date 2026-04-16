@@ -189,9 +189,55 @@ class SemanticQueryReader:
 
         return evidence_items
 
-    def lookup_canonical_candidates(self, _: Sequence[str]) -> List[CandidateEntity]:
-        """Reserved for Sprint 19 canonical lookup reads."""
-        return []
+    def lookup_canonical_candidates(self, tokens: Sequence[str]) -> List[CandidateEntity]:
+        """Lookup local entities via CanonicalEntity layer."""
+        if not tokens:
+            return []
+        query = """
+        MATCH (e)-[:INSTANCE_OF_CANONICAL]->(c:CanonicalEntity)
+        WHERE any(token IN $tokens WHERE
+            toLower(coalesce(c.canonical_name, "")) CONTAINS token
+            OR token IN coalesce(c.normalized_aliases, [])
+            OR token IN coalesce(c.acronyms, [])
+        )
+        OPTIONAL MATCH (other)-[:INSTANCE_OF_CANONICAL]->(c)
+        OPTIONAL MATCH (other)-[:OUT_REL]->(:RelationInstance)<-[:SUPPORTS]-(:Evidence)-[:FROM_PASSAGE]->(:Passage)<-[:HAS_PASSAGE]-(:Section)<-[:HAS_SECTION]-(d:Document)
+        WITH e, c, count(DISTINCT d) AS doc_count
+        RETURN DISTINCT e, c, doc_count
+        ORDER BY doc_count DESC
+        LIMIT 20
+        """
+        records, _, _ = self.db.driver.execute_query(  # type: ignore[union-attr]
+            query,
+            {"tokens": list(tokens)},
+        )
+        candidates: List[CandidateEntity] = []
+        for record in records:
+            entity = record.get("e")
+            canonical = record.get("c")
+            if entity is None or canonical is None:
+                continue
+            labels = list(getattr(entity, "labels", []))
+            node_type = labels[0] if labels else "Node"
+            display_name = (
+                entity.get("display_name")
+                or canonical.get("canonical_name")
+                or entity.get("canonical_name")
+                or entity.get("name")
+                or self._element_id(entity)
+            )
+            doc_count = int(record.get("doc_count") or 0)
+            candidates.append(
+                CandidateEntity(
+                    entity_id=self._element_id(entity),
+                    name=str(display_name),
+                    type=node_type,
+                    score=max(0.8, min(1.0, 0.8 + (doc_count * 0.02))),
+                    match_reason="canonical_linked_match",
+                    source="canonical-ready",
+                )
+            )
+        return candidates
 
     def find_fallback_entities(
         self,

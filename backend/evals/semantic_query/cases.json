@@ -8,7 +8,8 @@
       "expected_entities": ["Transformer", "Self-Attention"],
       "expected_sections": ["Methods"],
       "expected_citation_presence": true,
-      "expected_keywords": ["transformer", "self-attention", "evidence"]
+      "expected_keywords": ["transformer", "self-attention", "evidence"],
+      "expected_cross_document_hit": true
     },
     {
       "id": "method-rag",
@@ -18,7 +19,8 @@
       "expected_entities": ["Retrieval-Augmented Generation"],
       "expected_sections": ["System"],
       "expected_citation_presence": false,
-      "expected_keywords": ["retrieve", "generation", "method"]
+      "expected_keywords": ["retrieve", "generation", "method"],
+      "expected_cross_document_hit": false
     },
     {
       "id": "problem-gnn",
@@ -28,7 +30,8 @@
       "expected_entities": ["Graph Neural Network", "Over-smoothing"],
       "expected_sections": ["Limitations"],
       "expected_citation_presence": false,
-      "expected_keywords": ["problem", "limitation", "over-smoothing"]
+      "expected_keywords": ["problem", "limitation", "over-smoothing"],
+      "expected_cross_document_hit": false
     },
     {
       "id": "citation-gap",
@@ -38,7 +41,8 @@
       "expected_entities": ["Synthetic Contrastive Approach"],
       "expected_sections": ["Results"],
       "expected_citation_presence": false,
-      "expected_keywords": ["citation", "support", "approach"]
+      "expected_keywords": ["citation", "support", "approach"],
+      "expected_cross_document_hit": false
     },
     {
       "id": "relation-lookup",
@@ -48,7 +52,8 @@
       "expected_entities": ["Jane Smith", "MIT"],
       "expected_sections": ["Author Info"],
       "expected_citation_presence": false,
-      "expected_keywords": ["relation", "affiliated", "mit"]
+      "expected_keywords": ["relation", "affiliated", "mit"],
+      "expected_cross_document_hit": false
     },
     {
       "id": "citation-present",
@@ -58,7 +63,19 @@
       "expected_entities": ["Cross Encoder Re-ranker"],
       "expected_sections": ["Evaluation"],
       "expected_citation_presence": true,
-      "expected_keywords": ["citation", "cross", "reranking"]
+      "expected_keywords": ["citation", "cross", "reranking"],
+      "expected_cross_document_hit": false
+    },
+    {
+      "id": "acronym-rag-crossdoc",
+      "document_id": "doc-rag",
+      "question": "How is RAG used across documents?",
+      "expected_intent": "METHOD_USAGE",
+      "expected_entities": ["Retrieval-Augmented Generation"],
+      "expected_sections": ["System"],
+      "expected_citation_presence": false,
+      "expected_keywords": ["rag", "retrieval", "generation"],
+      "expected_cross_document_hit": true
     }
   ]
 }

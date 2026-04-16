@@ -17,6 +17,11 @@ class BaseEntity(BaseModel):
     canonical_name: Optional[str] = None
     aliases: List[str] = []
     confidence: float = Field(ge=0, le=1)
+    canonical_id: Optional[str] = None
+    canonical_linked: Optional[bool] = None
+    canonical_link_reason: Optional[str] = None
+    canonical_link_confidence: Optional[float] = None
+    canonical_created_new: Optional[bool] = None
 
 
 class Concept(BaseEntity):

@@ -40,7 +40,19 @@ class CandidateSelector:
                 intent=interpreted.intent,
             )
         canonical_candidates = self.reader.lookup_canonical_candidates(tokens)
-        return [*local_candidates, *canonical_candidates]
+        merged_by_id: dict[str, CandidateEntity] = {}
+        for candidate in [*local_candidates, *canonical_candidates]:
+            existing = merged_by_id.get(candidate.entity_id)
+            if existing is None:
+                merged_by_id[candidate.entity_id] = candidate
+                continue
+            if candidate.score > existing.score:
+                merged_by_id[candidate.entity_id] = candidate
+                continue
+            if candidate.source == "canonical-ready" and existing.source != "canonical-ready":
+                merged_by_id[candidate.entity_id] = candidate
+        ranked = sorted(merged_by_id.values(), key=lambda item: item.score, reverse=True)
+        return ranked[:20]
 
     @staticmethod
     def to_related_nodes(candidates: list[CandidateEntity]) -> List[RelatedNodeItem]:

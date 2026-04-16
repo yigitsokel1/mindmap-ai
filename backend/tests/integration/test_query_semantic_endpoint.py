@@ -1,5 +1,47 @@
 class FakeSemanticQueryService:
     def answer(self, request):
+        if request.document_id == "cross-doc":
+            return {
+                "answer": "Transformer appears across multiple papers.",
+                "query_intent": "METHOD_USAGE",
+                "matched_entities": [{"id": "n-1", "type": "Method", "display_name": "Transformer"}],
+                "evidence": [
+                    {
+                        "relation_type": "USES",
+                        "page": 3,
+                        "snippet": "Transformer evidence in paper A.",
+                        "section": "Methods",
+                        "confidence": 0.9,
+                        "related_node_ids": ["n-1", "ri-a"],
+                        "document_id": "doc-1",
+                        "document_name": "paper_a.pdf",
+                    },
+                    {
+                        "relation_type": "USES",
+                        "page": 2,
+                        "snippet": "Transformer evidence in paper B.",
+                        "section": "Methods",
+                        "confidence": 0.88,
+                        "related_node_ids": ["n-1", "ri-b"],
+                        "document_id": "doc-2",
+                        "document_name": "paper_b.pdf",
+                    },
+                ],
+                "related_nodes": [{"id": "n-1", "type": "Method", "display_name": "Transformer"}],
+                "citations": [],
+                "explanation": {
+                    "why_these_entities": ["canonical match"],
+                    "why_this_evidence": ["cross-document canonical linkage"],
+                    "reasoning_path": ["question_intent:METHOD_USAGE"],
+                    "selected_sections": ["Methods"],
+                    "selection_signals": ["canonical_linked_match"],
+                },
+                "confidence": 0.83,
+                "limited_evidence": False,
+                "uncertainty_signal": False,
+                "uncertainty_reason": None,
+                "mode": "semantic_grounded",
+            }
         if request.document_id == "empty-evidence":
             return {
                 "answer": f"Matched semantic nodes for '{request.question}', but no supporting evidence was found.",
@@ -125,6 +167,20 @@ def test_query_semantic_endpoint_citation_backed_chain_contract(api_client, monk
     assert body["citations"]
     assert body["evidence"][0]["citation_label"] == "[12]"
     assert body["evidence"][0]["reference_entry_id"] == "ref-1"
+
+
+def test_query_semantic_endpoint_cross_document_entity_discovery(api_client, monkeypatch):
+    import backend.app.api.query as query_api
+
+    monkeypatch.setattr(query_api, "SemanticQueryService", FakeSemanticQueryService)
+    response = api_client.post(
+        "/api/query/semantic",
+        json={"question": "Transformer hangi paperlarda geçiyor?", "document_id": "cross-doc"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    docs = {item["document_id"] for item in body["evidence"]}
+    assert len(docs) == 2
 
 
 def test_query_semantic_endpoint_validation(api_client):

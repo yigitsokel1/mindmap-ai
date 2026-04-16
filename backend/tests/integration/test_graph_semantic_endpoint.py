@@ -25,6 +25,10 @@ class FakeGraphReader:
             ),
             evidences=[{"text": "evidence snippet", "passage_id": "p-1", "document_id": "doc-1"}],
             citations=[{"title": "Ref", "label": "[1]"}],
+            linked_canonical_entity={"uid": "canonical_method:transformer", "canonical_name": "Transformer"},
+            canonical_aliases=["transformer architecture"],
+            appears_in_documents=2,
+            top_related_documents=["paper_a.pdf", "paper_b.pdf"],
         )
 
 
@@ -72,6 +76,8 @@ def test_graph_node_detail_endpoint_contract(api_client, monkeypatch):
     assert body["summary"]
     assert body["evidences"]
     assert body["citations"]
+    assert body["linked_canonical_entity"]["canonical_name"] == "Transformer"
+    assert body["appears_in_documents"] == 2
 
 
 def test_graph_node_detail_endpoint_not_found(api_client, monkeypatch):

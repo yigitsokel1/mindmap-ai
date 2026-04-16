@@ -51,3 +51,7 @@ class NodeDetail(BaseModel):
     grouped_relations: NodeGroupedRelations
     evidences: list[NodeEvidenceItem]
     citations: list[NodeCitationItem]
+    linked_canonical_entity: Optional[Dict[str, str | int | float | bool | None]] = None
+    canonical_aliases: list[str] = []
+    appears_in_documents: int = 0
+    top_related_documents: list[str] = []

@@ -115,6 +115,11 @@ def test_read_node_detail_shapes_contract(monkeypatch):
         "_load_node_citations",
         lambda _node_id, document_id=None: [NodeCitationItem(title="Ref", year=2017, label="[1]")],
     )
+    monkeypatch.setattr(
+        reader,
+        "_load_canonical_details",
+        lambda _node_id: {"canonical": None, "aliases": [], "document_count": 0, "top_documents": []},
+    )
 
     detail = reader.read_node_detail("n1")
     assert detail is not None
@@ -147,6 +152,7 @@ def test_build_node_summary_mentions_importance():
         evidences=[NodeEvidenceItem(text="e1", passage_id="p1", document_id="doc-1")],
         citations=[NodeCitationItem(title="Ref1", label="[1]")],
         metadata={},
+        canonical_info={"canonical": None, "document_count": 0},
     )
     assert "Transformer" in summary
     assert "importance" in summary

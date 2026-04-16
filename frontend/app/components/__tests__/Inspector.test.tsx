@@ -33,6 +33,10 @@ describe("Inspector", () => {
           },
           evidences: [{ text: "evidence snippet", passage_id: "p-1", document_id: "doc-1" }],
           citations: [{ title: "Ref", label: "[1]" }],
+          linked_canonical_entity: { canonical_name: "Transformer", uid: "canonical_method:transformer" },
+          canonical_aliases: ["Transformer architecture"],
+          appears_in_documents: 3,
+          top_related_documents: ["paper_a.pdf", "paper_b.pdf"],
         }),
       })
     );
@@ -43,5 +47,7 @@ describe("Inspector", () => {
     expect(screen.getByText("Outgoing Relations")).toBeInTheDocument();
     expect(screen.getByText("Top Evidence Snippets")).toBeInTheDocument();
     expect(screen.getByText("Linked Citations")).toBeInTheDocument();
+    expect(screen.getByText("Canonical Link")).toBeInTheDocument();
+    expect(screen.getByText("Aliases")).toBeInTheDocument();
   });
 });

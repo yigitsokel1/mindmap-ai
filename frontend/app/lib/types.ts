@@ -127,6 +127,10 @@ export interface NodeDetail {
   };
   evidences: NodeEvidenceItem[];
   citations: NodeCitationItem[];
+  linked_canonical_entity?: Record<string, unknown> | null;
+  canonical_aliases?: string[];
+  appears_in_documents?: number;
+  top_related_documents?: string[];
 }
 
 export interface SemanticEvidenceItem {
