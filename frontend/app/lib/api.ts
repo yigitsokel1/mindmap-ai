@@ -4,7 +4,7 @@ import type { GraphFilters, GraphPreset, GraphRenderData, GraphResponse } from "
 const DEFAULT_GRAPH_PRESET: GraphPreset = "semantic";
 
 function buildGraphUrl(filters: GraphFilters): string {
-  const url = new URL(API_ENDPOINTS.GRAPH);
+  const url = new URL(API_ENDPOINTS.GRAPH_SEMANTIC);
   const params = url.searchParams;
 
   if (filters.document_id) {

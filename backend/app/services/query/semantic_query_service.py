@@ -59,7 +59,16 @@ class SemanticQueryService:
             related_nodes = self._to_related_nodes(candidate_nodes)
             answer_text = self.compose_answer(request, interpreted, ranked_evidence, related_nodes)
             confidence = self._estimate_confidence(len(candidate_nodes), len(ranked_evidence))
+            answer_text, limited_evidence, uncertainty_signal, uncertainty_reason = self._apply_guardrails(
+                answer_text=answer_text,
+                query_intent=interpreted.intent,
+                evidence=ranked_evidence,
+                citations=citations,
+                confidence=confidence,
+            )
             explanation = self._build_explanation(interpreted, candidate_nodes, ranked_evidence, traversal_plan)
+            explanation.reasoning_path.append(f"limited_evidence:{limited_evidence}")
+            explanation.reasoning_path.append(f"uncertainty_signal:{uncertainty_signal}")
             logger.info(
                 "Semantic query completed candidate_nodes=%d evidence=%d citations=%d confidence=%.2f document_id=%s",
                 len(candidate_nodes),
@@ -78,6 +87,9 @@ class SemanticQueryService:
                 citations=citations,
                 explanation=explanation,
                 confidence=confidence,
+                limited_evidence=limited_evidence,
+                uncertainty_signal=uncertainty_signal,
+                uncertainty_reason=uncertainty_reason,
             )
         except Exception as exc:
             logger.error("Semantic query execution failed: %s", exc, exc_info=True)
@@ -400,6 +412,46 @@ class SemanticQueryService:
             return 0.0
         raw = min(1.0, 0.25 + (0.1 * min(candidate_count, 4)) + (0.12 * min(evidence_count, 4)))
         return round(raw, 2)
+
+    @staticmethod
+    def _apply_guardrails(
+        answer_text: str,
+        query_intent: str,
+        evidence: Sequence[SemanticEvidenceItem],
+        citations: Sequence[CitationItem],
+        confidence: float,
+    ) -> tuple[str, bool, bool, Optional[str]]:
+        limited_evidence = False
+        uncertainty_signal = False
+        uncertainty_reason: Optional[str] = None
+        guarded_answer = answer_text
+
+        if not evidence:
+            limited_evidence = True
+            uncertainty_signal = True
+            uncertainty_reason = "no_evidence"
+            if "limited evidence" not in guarded_answer.lower():
+                guarded_answer = f"{guarded_answer} Limited evidence is available for this answer."
+            return guarded_answer, limited_evidence, uncertainty_signal, uncertainty_reason
+
+        if query_intent == "CITATION_BASIS" and not citations:
+            limited_evidence = True
+            uncertainty_signal = True
+            uncertainty_reason = "citation_missing"
+            guarded_answer = (
+                f"{guarded_answer} Citation basis could not be verified because no citation links were found."
+            )
+            return guarded_answer, limited_evidence, uncertainty_signal, uncertainty_reason
+
+        weak_match = len(evidence) < 2 or confidence < 0.45
+        if weak_match:
+            limited_evidence = True
+            uncertainty_signal = True
+            uncertainty_reason = "weak_match"
+            if "limited evidence" not in guarded_answer.lower():
+                guarded_answer = f"{guarded_answer} This answer is based on limited evidence."
+
+        return guarded_answer, limited_evidence, uncertainty_signal, uncertainty_reason
 
     @staticmethod
     def _pick_document_id(document: Any) -> Optional[str]:

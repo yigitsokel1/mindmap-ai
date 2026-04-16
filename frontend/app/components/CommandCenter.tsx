@@ -10,8 +10,51 @@ import { resolveDocumentDisplayName } from "../lib/documentLabel";
 import type {
   GraphPreset,
   SemanticEvidenceItem,
+  SemanticExplanation,
+  SemanticRelatedNode,
   SemanticQueryResponse,
 } from "../lib/types";
+
+const EMPTY_EXPLANATION: SemanticExplanation = {
+  why_these_entities: [],
+  why_this_evidence: [],
+  reasoning_path: [],
+  selected_sections: [],
+  selection_signals: [],
+};
+
+function normalizeSemanticResult(raw: Partial<SemanticQueryResponse>): SemanticQueryResponse {
+  return {
+    answer: raw.answer || "No answer text returned.",
+    query_intent: raw.query_intent || "SUMMARY",
+    matched_entities: Array.isArray(raw.matched_entities) ? raw.matched_entities : [],
+    evidence: Array.isArray(raw.evidence) ? raw.evidence : [],
+    related_nodes: Array.isArray(raw.related_nodes) ? raw.related_nodes : [],
+    citations: Array.isArray(raw.citations) ? raw.citations : [],
+    explanation: raw.explanation
+      ? {
+          why_these_entities: Array.isArray(raw.explanation.why_these_entities)
+            ? raw.explanation.why_these_entities
+            : [],
+          why_this_evidence: Array.isArray(raw.explanation.why_this_evidence)
+            ? raw.explanation.why_this_evidence
+            : [],
+          reasoning_path: Array.isArray(raw.explanation.reasoning_path) ? raw.explanation.reasoning_path : [],
+          selected_sections: Array.isArray(raw.explanation.selected_sections)
+            ? raw.explanation.selected_sections
+            : [],
+          selection_signals: Array.isArray(raw.explanation.selection_signals)
+            ? raw.explanation.selection_signals
+            : [],
+        }
+      : EMPTY_EXPLANATION,
+    confidence: typeof raw.confidence === "number" ? raw.confidence : 0,
+    limited_evidence: Boolean(raw.limited_evidence),
+    uncertainty_signal: Boolean(raw.uncertainty_signal),
+    uncertainty_reason: raw.uncertainty_reason ?? null,
+    mode: "semantic_grounded",
+  };
+}
 
 export default function CommandCenter() {
   const [semanticResult, setSemanticResult] = useState<SemanticQueryResponse | null>(null);
@@ -78,7 +121,7 @@ export default function CommandCenter() {
         throw new Error(`Failed to get response: ${detail}`);
       }
 
-      const data: SemanticQueryResponse = await response.json();
+      const data = normalizeSemanticResult((await response.json()) as Partial<SemanticQueryResponse>);
       setSemanticResult(data);
       setSemanticError(null);
       const highlighted = data.related_nodes.map((node) => node.id);
@@ -147,6 +190,16 @@ export default function CommandCenter() {
 
   const handlePresetChange = (preset: GraphPreset) => {
     setGraphPreset(preset);
+  };
+
+  const handleEntityInspect = (entity: SemanticRelatedNode) => {
+    setSelectedNodeContext({
+      id: entity.id,
+      label: entity.type,
+      title: entity.display_name,
+      documentName: selectedDocumentId || undefined,
+      rawText: `Inspecting entity: ${entity.display_name}`,
+    });
   };
 
   const handleEvidenceToggle = (checked: boolean) => {
@@ -291,7 +344,20 @@ export default function CommandCenter() {
                     <p className="text-[10px] uppercase tracking-wide text-cyan-300 font-mono mb-1">
                       Answer · confidence {semanticResult.confidence.toFixed(2)}
                     </p>
+                    {semanticResult.limited_evidence && (
+                      <p
+                        className="text-[10px] text-amber-300 font-mono mb-1"
+                        data-testid="limited-evidence-flag"
+                      >
+                        LIMITED EVIDENCE
+                      </p>
+                    )}
                     <p className="text-xs text-white/90 font-mono leading-relaxed">{semanticResult.answer}</p>
+                    {semanticResult.uncertainty_signal && (
+                      <p className="text-[10px] text-amber-200/90 font-mono mt-2" data-testid="uncertainty-signal">
+                        Uncertainty: {semanticResult.uncertainty_reason || "weak evidence match"}
+                      </p>
+                    )}
                   </div>
                   <div className="bg-black/20 border border-white/10 rounded px-3 py-2">
                     <p className="text-[10px] uppercase tracking-wide text-cyan-300 font-mono mb-2">
@@ -316,13 +382,18 @@ export default function CommandCenter() {
                     </p>
                     <div className="flex flex-wrap gap-1.5">
                       {semanticResult.matched_entities.map((entity) => (
-                        <span
+                        <button
                           key={entity.id}
+                          onClick={() => handleEntityInspect(entity)}
+                          data-testid={`inspect-entity-${entity.id}`}
                           className="text-[10px] font-mono px-2 py-1 rounded border border-cyan-500/30 text-cyan-200 bg-cyan-500/5"
                         >
                           {entity.display_name}
-                        </span>
+                        </button>
                       ))}
+                      {semanticResult.matched_entities.length === 0 && (
+                        <p className="text-[10px] text-white/50 font-mono">No entities matched for this question.</p>
+                      )}
                     </div>
                   </div>
                   <div className="space-y-2">
@@ -331,6 +402,7 @@ export default function CommandCenter() {
                       <button
                         key={`${item.related_node_ids.join("-")}-${idx}`}
                         onClick={() => handleEvidenceClick(item)}
+                        data-testid={`evidence-item-${idx}`}
                         className="w-full text-left bg-black/30 border border-white/10 rounded px-3 py-2 hover:bg-white/5 transition-colors"
                       >
                         <div className="flex items-center justify-between gap-2">
@@ -354,6 +426,11 @@ export default function CommandCenter() {
                         </p>
                       </button>
                     ))}
+                    {semanticResult.evidence.length === 0 && (
+                      <div className="bg-black/30 border border-amber-500/30 rounded px-3 py-2">
+                        <p className="text-[10px] text-amber-200 font-mono">No supporting evidence found.</p>
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <p className="text-[10px] uppercase tracking-wide text-purple-300 font-mono">Citations</p>
@@ -361,6 +438,7 @@ export default function CommandCenter() {
                       <button
                         key={`${citation.reference_entry_id || citation.label}-${idx}`}
                         onClick={() => handleCitationClick(citation)}
+                        data-testid={`citation-item-${idx}`}
                         className="w-full text-left bg-black/30 border border-white/10 rounded px-3 py-2 hover:bg-white/5 transition-colors"
                       >
                         <p className="text-[10px] text-cyan-300 font-mono">{citation.label}</p>
@@ -374,6 +452,11 @@ export default function CommandCenter() {
                         </p>
                       </button>
                     ))}
+                    {semanticResult.citations.length === 0 && (
+                      <div className="bg-black/30 border border-white/10 rounded px-3 py-2">
+                        <p className="text-[10px] text-white/60 font-mono">No citation links were returned.</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -422,6 +505,7 @@ export default function CommandCenter() {
                     disabled={isLoadingResponse}
                     rows={1}
                     className="w-full px-3 py-2 rounded-lg border border-white/10 bg-black/40 text-white/90 placeholder-white/30 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-cyan-500/50 focus:border-cyan-500/50 resize-none disabled:opacity-50"
+                    data-testid="query-input"
                   />
                 </div>
                 <button
@@ -429,6 +513,7 @@ export default function CommandCenter() {
                   disabled={!inputMessage.trim() || isLoadingResponse}
                   className="p-2 rounded-lg border border-cyan-500/30 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   title="Send"
+                  data-testid="query-send"
                 >
                   {isLoadingResponse ? (
                     <Loader2 className="w-4 h-4 animate-spin" />

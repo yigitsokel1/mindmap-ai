@@ -16,6 +16,9 @@ class FakeSemanticQueryService:
                     "selection_signals": ["entity_mention_match"],
                 },
                 "confidence": 0.0,
+                "limited_evidence": True,
+                "uncertainty_signal": True,
+                "uncertainty_reason": "no_evidence",
                 "mode": "semantic_grounded",
             }
         return {
@@ -48,6 +51,9 @@ class FakeSemanticQueryService:
                 "selection_signals": ["citation_signal_weighted_by_intent"],
             },
             "confidence": 0.81,
+            "limited_evidence": False,
+            "uncertainty_signal": False,
+            "uncertainty_reason": None,
             "mode": "semantic_grounded",
         }
 
@@ -72,6 +78,8 @@ def test_query_semantic_endpoint_contract(api_client, monkeypatch):
     assert body["explanation"]["reasoning_path"]
     assert "selection_signals" in body["explanation"]
     assert body["related_nodes"][0]["display_name"] == "Transformer"
+    assert "limited_evidence" in body
+    assert "uncertainty_signal" in body
 
 
 def test_query_semantic_endpoint_document_filter_contract(api_client, monkeypatch):

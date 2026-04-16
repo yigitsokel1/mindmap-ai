@@ -172,6 +172,9 @@ export interface SemanticQueryResponse {
   citations: SemanticCitationItem[];
   explanation: SemanticExplanation;
   confidence: number;
+  limited_evidence?: boolean;
+  uncertainty_signal?: boolean;
+  uncertainty_reason?: string | null;
   mode: "semantic_grounded";
 }
 

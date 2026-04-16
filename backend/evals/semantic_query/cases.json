@@ -1,0 +1,64 @@
+{
+  "cases": [
+    {
+      "id": "summary-transformer",
+      "document_id": "doc-transformer",
+      "question": "Summarize the transformer method grounding.",
+      "expected_intent": "METHOD_USAGE",
+      "expected_entities": ["Transformer", "Self-Attention"],
+      "expected_sections": ["Methods"],
+      "expected_citation_presence": true,
+      "expected_keywords": ["transformer", "self-attention", "evidence"]
+    },
+    {
+      "id": "method-rag",
+      "document_id": "doc-rag",
+      "question": "Which method is used in retrieval augmented generation?",
+      "expected_intent": "METHOD_USAGE",
+      "expected_entities": ["Retrieval-Augmented Generation"],
+      "expected_sections": ["System"],
+      "expected_citation_presence": false,
+      "expected_keywords": ["retrieve", "generation", "method"]
+    },
+    {
+      "id": "problem-gnn",
+      "document_id": "doc-gnn",
+      "question": "What problem do graph neural networks face?",
+      "expected_intent": "PROBLEM",
+      "expected_entities": ["Graph Neural Network", "Over-smoothing"],
+      "expected_sections": ["Limitations"],
+      "expected_citation_presence": false,
+      "expected_keywords": ["problem", "limitation", "over-smoothing"]
+    },
+    {
+      "id": "citation-gap",
+      "document_id": "doc-citation-gap",
+      "question": "Which citations support the synthetic contrastive approach?",
+      "expected_intent": "CITATION_BASIS",
+      "expected_entities": ["Synthetic Contrastive Approach"],
+      "expected_sections": ["Results"],
+      "expected_citation_presence": false,
+      "expected_keywords": ["citation", "support", "approach"]
+    },
+    {
+      "id": "relation-lookup",
+      "document_id": "doc-entity-relations",
+      "question": "What is the relation between Jane Smith and MIT?",
+      "expected_intent": "RELATION_LOOKUP",
+      "expected_entities": ["Jane Smith", "MIT"],
+      "expected_sections": ["Author Info"],
+      "expected_citation_presence": false,
+      "expected_keywords": ["relation", "affiliated", "mit"]
+    },
+    {
+      "id": "citation-present",
+      "document_id": "doc-rag",
+      "question": "What references are cited for cross encoder reranking?",
+      "expected_intent": "CITATION_BASIS",
+      "expected_entities": ["Cross Encoder Re-ranker"],
+      "expected_sections": ["Evaluation"],
+      "expected_citation_presence": true,
+      "expected_keywords": ["citation", "cross", "reranking"]
+    }
+  ]
+}

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, FileText } from "lucide-react";
+import { X, FileText, Loader2, AlertTriangle } from "lucide-react";
 import { API_ENDPOINTS } from "../lib/constants";
 import type { NodeDetail } from "../lib/types";
 import { useAppStore } from "../store/useAppStore";
@@ -19,6 +19,8 @@ export default function Inspector() {
     selectedDocumentId,
   } = useAppStore();
   const [nodeDetail, setNodeDetail] = useState<NodeDetail | null>(null);
+  const [isLoadingNodeDetail, setIsLoadingNodeDetail] = useState(false);
+  const [nodeDetailError, setNodeDetailError] = useState<string | null>(null);
   const contextDetails = (selectedNodeContext?.details || {}) as Record<string, unknown>;
 
   useEffect(() => {
@@ -29,6 +31,8 @@ export default function Inspector() {
     }
     let cancelled = false;
     const loadNodeDetail = async () => {
+      setIsLoadingNodeDetail(true);
+      setNodeDetailError(null);
       try {
         const response = await fetch(API_ENDPOINTS.GRAPH_NODE_DETAIL(contextId, selectedDocumentId || undefined));
         if (!response.ok) {
@@ -45,6 +49,11 @@ export default function Inspector() {
       } catch {
         if (!cancelled) {
           setNodeDetail(null);
+          setNodeDetailError("Node detail could not be loaded.");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingNodeDetail(false);
         }
       }
     };
@@ -128,6 +137,18 @@ export default function Inspector() {
                 <p className="text-[10px] text-white/50 font-mono mb-2 uppercase tracking-wide">
                   Node Details
                 </p>
+                {isLoadingNodeDetail && (
+                  <div className="mb-3 flex items-center gap-2 text-[10px] text-cyan-300 font-mono">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Loading node detail...
+                  </div>
+                )}
+                {nodeDetailError && (
+                  <div className="mb-3 flex items-center gap-2 text-[10px] text-red-300 font-mono">
+                    <AlertTriangle className="w-3 h-3" />
+                    {nodeDetailError}
+                  </div>
+                )}
                 {selectedNodeContext.rawText && (
                   <p className="text-xs text-white/80 font-mono leading-relaxed mb-3">
                     {selectedNodeContext.rawText}
@@ -156,6 +177,11 @@ export default function Inspector() {
                         )}
                       </div>
                     )}
+                    {!Array.isArray(
+                      (contextDetails.grouped_relations as { incoming?: unknown[] } | undefined)?.incoming
+                    ) && (
+                      <p className="text-[10px] text-white/50 font-mono mb-3">No incoming relations available.</p>
+                    )}
                     {Array.isArray(
                       (contextDetails.grouped_relations as { outgoing?: unknown[] } | undefined)?.outgoing
                     ) && (
@@ -177,6 +203,11 @@ export default function Inspector() {
                         )}
                       </div>
                     )}
+                    {!Array.isArray(
+                      (contextDetails.grouped_relations as { outgoing?: unknown[] } | undefined)?.outgoing
+                    ) && (
+                      <p className="text-[10px] text-white/50 font-mono mb-3">No outgoing relations available.</p>
+                    )}
                     {Array.isArray(contextDetails.evidences) && (
                       <div className="mb-3">
                         <p className="text-[10px] text-cyan-300 font-mono uppercase mb-1">Top Evidence Snippets</p>
@@ -188,6 +219,9 @@ export default function Inspector() {
                             </p>
                           ))}
                       </div>
+                    )}
+                    {!Array.isArray(contextDetails.evidences) && (
+                      <p className="text-[10px] text-white/50 font-mono mb-3">No evidence snippets available.</p>
                     )}
                     {Array.isArray(contextDetails.citations) && (
                       <div className="mb-3">
@@ -201,10 +235,16 @@ export default function Inspector() {
                           ))}
                       </div>
                     )}
+                    {!Array.isArray(contextDetails.citations) && (
+                      <p className="text-[10px] text-white/50 font-mono mb-3">No linked citations available.</p>
+                    )}
                     <pre className="text-[10px] text-white/60 font-mono whitespace-pre-wrap wrap-break-word">
                       {JSON.stringify(contextDetails, null, 2)}
                     </pre>
                   </>
+                )}
+                {!selectedNodeContext.details && !isLoadingNodeDetail && !nodeDetailError && (
+                  <p className="text-[10px] text-white/50 font-mono">No detail payload is available for this node.</p>
                 )}
               </div>
             ) : (

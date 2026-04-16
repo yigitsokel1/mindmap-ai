@@ -90,6 +90,9 @@ def test_semantic_query_service_builds_grounded_answer(monkeypatch):
     assert result.explanation.selection_signals
     assert len(result.citations) == 1
     assert result.confidence > 0
+    assert result.limited_evidence is True
+    assert result.uncertainty_signal is True
+    assert result.uncertainty_reason == "weak_match"
 
 
 def test_semantic_query_service_uses_current_schema_edges(monkeypatch):
@@ -181,6 +184,9 @@ def test_semantic_query_service_handles_nodes_without_evidence(monkeypatch):
 
     assert result.evidence == []
     assert "no supporting evidence" in result.answer.lower()
+    assert result.limited_evidence is True
+    assert result.uncertainty_signal is True
+    assert result.uncertainty_reason == "no_evidence"
 
 
 def test_semantic_query_service_handles_no_matches(monkeypatch):
@@ -204,3 +210,44 @@ def test_semantic_query_service_handles_no_matches(monkeypatch):
     assert result.matched_entities == []
     assert result.citations == []
     assert result.confidence == 0
+    assert result.limited_evidence is True
+    assert result.uncertainty_signal is True
+    assert result.uncertainty_reason == "no_evidence"
+
+
+def test_semantic_query_service_flags_missing_citation_basis(monkeypatch):
+    import backend.app.services.query.semantic_query_service as service_module
+
+    class CitationMissingDriver(FakeDriver):
+        def execute_query(self, query, params=None, database_=None):
+            if "RETURN DISTINCT n" in query:
+                return ([{"n": FakeNode("n-1", ["Method"], {"display_name": "Transformer"})}], None, None)
+            if "MATCH (n)-[:OUT_REL]->(ri:RelationInstance)" in query:
+                return (
+                    [
+                        {
+                            "ri": FakeNode("ri-1", ["RelationInstance"], {"type": "SUPPORTS"}),
+                            "ev": FakeNode("ev-1", ["Evidence"], {"statement": "support statement"}),
+                            "p": FakeNode("p-1", ["Passage"], {"text": "support statement", "page_number": 3}),
+                            "d": FakeNode("d-1", ["Document"], {"uid": "doc-1", "name": "paper.pdf"}),
+                        }
+                    ],
+                    None,
+                    None,
+                )
+            return ([], None, None)
+
+    class CitationMissingDB(FakeDB):
+        def __init__(self):
+            self.driver = CitationMissingDriver()
+
+    monkeypatch.setattr(service_module, "Neo4jDatabase", CitationMissingDB)
+    service = SemanticQueryService()
+    result = service.answer(SemanticQueryRequest(question="Which citations support transformer?"))
+
+    assert result.query_intent == "CITATION_BASIS"
+    assert result.citations == []
+    assert result.limited_evidence is True
+    assert result.uncertainty_signal is True
+    assert result.uncertainty_reason == "citation_missing"
+    assert "citation basis could not be verified" in result.answer.lower()

@@ -110,7 +110,7 @@ export default function GraphViewer3D() {
       try {
         setIsLoading(true);
         setError(null);
-        const response = await fetch(API_ENDPOINTS.GRAPH);
+        const response = await fetch(API_ENDPOINTS.GRAPH_SEMANTIC);
         
         if (!response.ok) {
           throw new Error(`Failed to fetch graph: ${response.statusText}`);

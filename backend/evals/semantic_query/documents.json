@@ -1,0 +1,129 @@
+{
+  "documents": [
+    {
+      "id": "doc-transformer",
+      "name": "transformer_paper.pdf",
+      "entities": [
+        { "id": "m-transformer", "type": "Method", "display_name": "Transformer" },
+        { "id": "c-self-attention", "type": "Concept", "display_name": "Self-Attention" },
+        { "id": "t-machine-translation", "type": "Task", "display_name": "Machine Translation" }
+      ],
+      "evidence": [
+        {
+          "entity_id": "m-transformer",
+          "relation_type": "USES",
+          "snippet": "The Transformer architecture replaces recurrence with self-attention.",
+          "section": "Methods",
+          "page": 4,
+          "citation_label": "[12]",
+          "reference_entry_id": "ref-vaswani-2017"
+        },
+        {
+          "entity_id": "c-self-attention",
+          "relation_type": "SUPPORTS",
+          "snippet": "Self-attention layers enable long-range dependency modeling in sequence tasks.",
+          "section": "Methods",
+          "page": 5
+        }
+      ]
+    },
+    {
+      "id": "doc-gnn",
+      "name": "gnn_survey.pdf",
+      "entities": [
+        { "id": "m-gnn", "type": "Method", "display_name": "Graph Neural Network" },
+        { "id": "p-over-smoothing", "type": "Concept", "display_name": "Over-smoothing" },
+        { "id": "m-residual-gnn", "type": "Method", "display_name": "Residual GNN" }
+      ],
+      "evidence": [
+        {
+          "entity_id": "m-gnn",
+          "relation_type": "ADDRESSES",
+          "snippet": "Over-smoothing is a key limitation when stacking many GNN layers.",
+          "section": "Limitations",
+          "page": 7
+        },
+        {
+          "entity_id": "m-residual-gnn",
+          "relation_type": "IMPROVES",
+          "snippet": "Residual connections mitigate over-smoothing and stabilize deep message passing.",
+          "section": "Approach",
+          "page": 9,
+          "citation_label": "[22]",
+          "reference_entry_id": "ref-li-2019"
+        }
+      ]
+    },
+    {
+      "id": "doc-rag",
+      "name": "rag_systems.pdf",
+      "entities": [
+        { "id": "m-rag", "type": "Method", "display_name": "Retrieval-Augmented Generation" },
+        { "id": "d-faiss", "type": "Dataset", "display_name": "FAISS Index" },
+        { "id": "m-cross-encoder", "type": "Method", "display_name": "Cross Encoder Re-ranker" }
+      ],
+      "evidence": [
+        {
+          "entity_id": "m-rag",
+          "relation_type": "USES",
+          "snippet": "RAG pipelines retrieve candidate passages before generation.",
+          "section": "System",
+          "page": 3
+        },
+        {
+          "entity_id": "m-cross-encoder",
+          "relation_type": "SUPPORTS",
+          "snippet": "Cross encoder reranking improves relevance of top-k retrieved passages.",
+          "section": "Evaluation",
+          "page": 10,
+          "citation_label": "[8]",
+          "reference_entry_id": "ref-nogueira-2020"
+        }
+      ]
+    },
+    {
+      "id": "doc-citation-gap",
+      "name": "citation_gap_note.pdf",
+      "entities": [
+        { "id": "m-synth-approach", "type": "Method", "display_name": "Synthetic Contrastive Approach" },
+        { "id": "t-ablation", "type": "Task", "display_name": "Ablation Study" }
+      ],
+      "evidence": [
+        {
+          "entity_id": "m-synth-approach",
+          "relation_type": "SUPPORTS",
+          "snippet": "The approach outperforms baseline variants in internal ablation studies.",
+          "section": "Results",
+          "page": 6
+        }
+      ]
+    },
+    {
+      "id": "doc-entity-relations",
+      "name": "entity_relation_map.pdf",
+      "entities": [
+        { "id": "a-smith", "type": "Author", "display_name": "Jane Smith" },
+        { "id": "i-mit", "type": "Institution", "display_name": "MIT" },
+        { "id": "m-graph-encoder", "type": "Method", "display_name": "Graph Encoder" }
+      ],
+      "evidence": [
+        {
+          "entity_id": "a-smith",
+          "relation_type": "AFFILIATED_WITH",
+          "snippet": "Jane Smith is affiliated with MIT during the Graph Encoder project.",
+          "section": "Author Info",
+          "page": 1
+        },
+        {
+          "entity_id": "m-graph-encoder",
+          "relation_type": "DEVELOPED_BY",
+          "snippet": "The Graph Encoder method was developed by Jane Smith's group at MIT.",
+          "section": "Summary",
+          "page": 2,
+          "citation_label": "[3]",
+          "reference_entry_id": "ref-smith-2021"
+        }
+      ]
+    }
+  ]
+}

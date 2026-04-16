@@ -64,4 +64,7 @@ class SemanticQueryAnswer(BaseModel):
     citations: List[CitationItem] = Field(default_factory=list)
     explanation: QueryExplanation = Field(default_factory=QueryExplanation)
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    limited_evidence: bool = False
+    uncertainty_signal: bool = False
+    uncertainty_reason: Optional[str] = None
     mode: Literal["semantic_grounded"] = "semantic_grounded"

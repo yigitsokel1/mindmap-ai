@@ -21,7 +21,7 @@ Primary pipeline:
 ## Primary Runtime
 
 - semantic ingestion (`POST /api/ingest`, default mode)
-- semantic graph read (`GET /api/graph`)
+- semantic graph read (`GET /api/graph/semantic`)
 - semantic grounded query (`POST /api/query/semantic`)
 
 ## System Architecture
@@ -103,7 +103,7 @@ uvicorn backend.app.main:app --reload
 
 ### Frontend Status
 
-- Frontend graph viewer now uses semantic `GET /api/graph` response contract (`nodes`, `edges`, `meta`).
+- Frontend graph viewer now uses semantic `GET /api/graph/semantic` response contract (`nodes`, `edges`, `meta`).
 - Graph exploration includes preset modes: **Semantic**, **Evidence**, **Citation**.
 - Document-focused filtering is wired into graph fetch filters (`document_id`, include toggles).
 - Query panel uses a single **Semantic Query** mode.
@@ -117,10 +117,10 @@ Mode options:
 
 ### 2. Read Graph
 
-- `GET /api/graph` → semantic default response contract (`nodes`, `edges`, `meta`)
-- `GET /api/graph/semantic` → semantic graph (same contract)
+- `GET /api/graph/semantic` → semantic default response contract (`nodes`, `edges`, `meta`)
+- `GET /api/graph` → compatibility alias (deprecated, same contract)
 
-Semantic filters on `GET /api/graph`:
+Semantic filters on `GET /api/graph/semantic`:
 - `document_id`
 - `node_types` (supports both `node_types=A,B` and repeated params)
 - `include_structural`
@@ -178,6 +178,39 @@ Run locally:
 ```bash
 poetry run pytest backend/tests
 poetry run python -m compileall backend/app
+```
+
+Semantic query quality eval (deterministic synthetic set):
+
+```bash
+poetry run python backend/tools/run_semantic_eval.py
+```
+
+Frontend unit and e2e smoke tests:
+
+```bash
+cd frontend
+npm test
+npm run test:e2e
+```
+
+If Playwright browsers are missing on a fresh machine:
+
+```bash
+cd frontend
+npx playwright install chromium
+```
+
+### Reproducible Local Test Setup
+
+Single-pass setup and verification:
+
+```bash
+poetry install
+cd frontend && npm install
+cd ..
+poetry run pytest backend/tests
+cd frontend && npm test && npm run test:e2e
 ```
 
 Semantic graph endpoint contract checks now include:
