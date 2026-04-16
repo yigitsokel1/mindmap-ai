@@ -131,9 +131,13 @@ class SemanticGraphReader:
             evidences=evidences,
             citations=citations,
             linked_canonical_entity=canonical_info.get("canonical"),
+            canonical_link_reason=canonical_info.get("link_reason"),
+            canonical_link_confidence=canonical_info.get("link_confidence"),
             canonical_aliases=canonical_info.get("aliases", []),
+            canonical_alias_count=int(canonical_info.get("alias_count", 0)),
             appears_in_documents=int(canonical_info.get("document_count", 0)),
             top_related_documents=canonical_info.get("top_documents", []),
+            document_distribution=canonical_info.get("document_distribution", []),
         )
 
     # Query candidate reads (extension-ready for canonical linking)
@@ -204,10 +208,11 @@ class SemanticGraphReader:
         MATCH (n)
         WHERE elementId(n) = $node_id
         OPTIONAL MATCH (n)-[:INSTANCE_OF_CANONICAL]->(c:CanonicalEntity)
+        OPTIONAL MATCH (n)-[icl:INSTANCE_OF_CANONICAL]->(c)
         OPTIONAL MATCH (peer)-[:INSTANCE_OF_CANONICAL]->(c)
         OPTIONAL MATCH (peer)-[:OUT_REL]->(:RelationInstance)<-[:SUPPORTS]-(:Evidence)-[:FROM_PASSAGE]->(:Passage)<-[:HAS_PASSAGE]-(:Section)<-[:HAS_SECTION]-(d:Document)
-        WITH c, collect(DISTINCT d.title) AS doc_titles, count(DISTINCT d) AS doc_count
-        RETURN c, doc_titles, doc_count
+        WITH c, icl, collect(DISTINCT d.title) AS doc_titles, count(DISTINCT d) AS doc_count
+        RETURN c, icl, doc_titles, doc_count
         LIMIT 1
         """
         records, _, _ = self.db.driver.execute_query(  # type: ignore[union-attr]
@@ -215,22 +220,50 @@ class SemanticGraphReader:
             {"node_id": node_id},
         )
         if not records:
-            return {"canonical": None, "aliases": [], "document_count": 0, "top_documents": []}
+            return {
+                "canonical": None,
+                "aliases": [],
+                "alias_count": 0,
+                "document_count": 0,
+                "top_documents": [],
+                "document_distribution": [],
+                "link_reason": None,
+                "link_confidence": None,
+            }
         record = records[0]
         canonical = record.get("c")
         if canonical is None:
-            return {"canonical": None, "aliases": [], "document_count": 0, "top_documents": []}
+            return {
+                "canonical": None,
+                "aliases": [],
+                "alias_count": 0,
+                "document_count": 0,
+                "top_documents": [],
+                "document_distribution": [],
+                "link_reason": None,
+                "link_confidence": None,
+            }
         canonical_payload = {
             "uid": str(canonical.get("uid") or ""),
             "entity_type": str(canonical.get("entity_type") or ""),
             "canonical_name": str(canonical.get("canonical_name") or ""),
         }
         doc_titles = [str(item) for item in record.get("doc_titles", []) if item]
+        aliases = [str(item) for item in canonical.get("aliases", []) if item]
         return {
             "canonical": canonical_payload,
-            "aliases": [str(item) for item in canonical.get("aliases", []) if item][:20],
+            "aliases": aliases[:12],
+            "alias_count": len(aliases),
             "document_count": int(record.get("doc_count") or 0),
             "top_documents": doc_titles[:5],
+            "document_distribution": [
+                {"document": title, "count": 1}
+                for title in doc_titles[:3]
+            ],
+            "link_reason": str(canonical.get("link_reason") or (record.get("icl") or {}).get("reason") or ""),
+            "link_confidence": self._safe_float(
+                canonical.get("link_confidence") or (record.get("icl") or {}).get("confidence")
+            ),
         }
 
     def _resolve_labels(self, filters: SemanticGraphFilters) -> Set[str]:

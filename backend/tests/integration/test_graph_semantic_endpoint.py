@@ -27,8 +27,12 @@ class FakeGraphReader:
             citations=[{"title": "Ref", "label": "[1]"}],
             linked_canonical_entity={"uid": "canonical_method:transformer", "canonical_name": "Transformer"},
             canonical_aliases=["transformer architecture"],
+            canonical_alias_count=1,
+            canonical_link_reason="normalized_exact_match",
+            canonical_link_confidence=0.99,
             appears_in_documents=2,
             top_related_documents=["paper_a.pdf", "paper_b.pdf"],
+            document_distribution=[{"document": "paper_a.pdf", "count": 1}],
         )
 
 
@@ -78,6 +82,9 @@ def test_graph_node_detail_endpoint_contract(api_client, monkeypatch):
     assert body["citations"]
     assert body["linked_canonical_entity"]["canonical_name"] == "Transformer"
     assert body["appears_in_documents"] == 2
+    assert body["canonical_link_reason"] == "normalized_exact_match"
+    assert body["canonical_link_confidence"] == 0.99
+    assert body["document_distribution"][0]["document"] == "paper_a.pdf"
 
 
 def test_graph_node_detail_endpoint_not_found(api_client, monkeypatch):

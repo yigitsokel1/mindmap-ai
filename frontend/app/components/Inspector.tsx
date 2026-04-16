@@ -22,6 +22,14 @@ export default function Inspector() {
   const [isLoadingNodeDetail, setIsLoadingNodeDetail] = useState(false);
   const [nodeDetailError, setNodeDetailError] = useState<string | null>(null);
   const contextDetails = ((nodeDetail || selectedNodeContext?.details || {}) as Record<string, unknown>);
+  const canonicalAliases = Array.isArray(contextDetails.canonical_aliases)
+    ? (contextDetails.canonical_aliases as string[])
+    : [];
+  const aliasVisible = canonicalAliases.slice(0, 6);
+  const aliasHiddenCount = Math.max(
+    0,
+    Number(contextDetails.canonical_alias_count || canonicalAliases.length) - aliasVisible.length
+  );
 
   useEffect(() => {
     const contextId = selectedNodeContext?.id;
@@ -248,9 +256,7 @@ export default function Inspector() {
                     {!Array.isArray(contextDetails.citations) && (
                       <p className="text-[10px] text-white/50 font-mono mb-3">No linked citations available.</p>
                     )}
-                    {(
-                      contextDetails.linked_canonical_entity as Record<string, unknown> | undefined
-                    ) && (
+                    {(contextDetails.linked_canonical_entity as Record<string, unknown> | undefined) && (
                       <div className="mb-3">
                         <p className="text-[10px] text-cyan-300 font-mono uppercase mb-1">Canonical Link</p>
                         <p className="text-[10px] text-white/80 font-mono">
@@ -263,14 +269,32 @@ export default function Inspector() {
                         <p className="text-[10px] text-white/60 font-mono">
                           Appears in {Number(contextDetails.appears_in_documents || 0)} documents
                         </p>
+                        {contextDetails.canonical_link_reason && (
+                          <p className="text-[10px] text-white/70 font-mono mt-1">
+                            Why linked: {String(contextDetails.canonical_link_reason)}
+                          </p>
+                        )}
+                        {typeof contextDetails.canonical_link_confidence === "number" && (
+                          <p className="text-[10px] text-white/70 font-mono">
+                            Link confidence: {(Number(contextDetails.canonical_link_confidence) * 100).toFixed(1)}%
+                          </p>
+                        )}
+                        {Array.isArray(contextDetails.document_distribution) &&
+                          (contextDetails.document_distribution as Array<{ document: string; count: number }>)
+                            .slice(0, 3)
+                            .map((item, idx) => (
+                              <p key={`dist-${idx}`} className="text-[10px] text-white/60 font-mono">
+                                {item.document} ({item.count})
+                              </p>
+                            ))}
                       </div>
                     )}
-                    {Array.isArray(contextDetails.canonical_aliases) &&
-                      (contextDetails.canonical_aliases as string[]).length > 0 && (
+                    {canonicalAliases.length > 0 && (
                         <div className="mb-3">
                           <p className="text-[10px] text-cyan-300 font-mono uppercase mb-1">Aliases</p>
                           <p className="text-[10px] text-white/70 font-mono">
-                            {(contextDetails.canonical_aliases as string[]).slice(0, 8).join(", ")}
+                            {aliasVisible.join(", ")}
+                            {aliasHiddenCount > 0 ? ` +${aliasHiddenCount} more` : ""}
                           </p>
                         </div>
                       )}

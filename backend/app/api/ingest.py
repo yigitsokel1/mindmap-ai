@@ -9,7 +9,7 @@ import time
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
-from backend.app.services.ingestion import IngestionService
+from backend.app.legacy.services.ingestion.legacy_ingestion_service import IngestionService
 from backend.app.services.ingestion.ingest_job_store import ingest_job_store
 from backend.app.services.ingestion.semantic_ingestion_service import SemanticIngestionService
 

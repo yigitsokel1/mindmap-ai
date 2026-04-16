@@ -52,6 +52,10 @@ class NodeDetail(BaseModel):
     evidences: list[NodeEvidenceItem]
     citations: list[NodeCitationItem]
     linked_canonical_entity: Optional[Dict[str, str | int | float | bool | None]] = None
+    canonical_link_reason: Optional[str] = None
+    canonical_link_confidence: Optional[float] = None
     canonical_aliases: list[str] = []
+    canonical_alias_count: int = 0
     appears_in_documents: int = 0
     top_related_documents: list[str] = []
+    document_distribution: list[Dict[str, str | int]] = []

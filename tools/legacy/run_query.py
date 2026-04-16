@@ -6,7 +6,7 @@ Primary semantic QA path is `POST /api/query/semantic`.
 
 import os
 from dotenv import load_dotenv
-from backend.app.services.legacy.retrieval import GraphRAGService
+from backend.app.legacy.services.legacy.retrieval import GraphRAGService
 
 # .env yükle
 load_dotenv()

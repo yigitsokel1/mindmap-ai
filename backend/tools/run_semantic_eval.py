@@ -30,6 +30,9 @@ class EvalCase:
     expected_citation_presence: bool
     expected_keywords: List[str]
     expected_cross_document_hit: bool = False
+    case_type: str = "baseline"
+    expected_no_link: bool = False
+    expects_alias_expansion: bool = False
 
 
 class FixtureNode:
@@ -184,6 +187,9 @@ def _as_cases(raw: Dict[str, Any]) -> List[EvalCase]:
             expected_citation_presence=bool(item.get("expected_citation_presence", False)),
             expected_keywords=[str(v) for v in item.get("expected_keywords", [])],
             expected_cross_document_hit=bool(item.get("expected_cross_document_hit", False)),
+            case_type=str(item.get("case_type", "baseline")),
+            expected_no_link=bool(item.get("expected_no_link", False)),
+            expects_alias_expansion=bool(item.get("expects_alias_expansion", False)),
         )
         for item in raw.get("cases", [])
     ]
@@ -225,6 +231,12 @@ def run_eval(fixtures_dir: Path) -> int:
     canonical_precision_sum = 0.0
     canonical_reuse_sum = 0.0
     cross_document_hits = 0
+    no_link_total = 0
+    no_link_correct = 0
+    false_positive_total = 0
+    false_positive_count = 0
+    alias_cases_total = 0
+    alias_success_count = 0
 
     print("\nSemantic Query Eval Report")
     print("=" * 72)
@@ -254,6 +266,17 @@ def run_eval(fixtures_dir: Path) -> int:
         matched_docs = {ev.document_id for ev in response.evidence if ev.document_id}
         cross_document_hit = len(matched_docs) > 1
         reuse_rate = len({item.display_name for item in response.matched_entities}) / len(response.matched_entities) if response.matched_entities else 0.0
+        matched_entity_names = {item.display_name.lower() for item in response.matched_entities}
+        expected_entity_names = {item.lower() for item in case.expected_entities}
+        no_link_prediction = not response.matched_entities
+        if case.expected_no_link:
+            no_link_total += 1
+            no_link_correct += int(no_link_prediction)
+            false_positive_total += 1
+            false_positive_count += int(not no_link_prediction)
+        if case.expects_alias_expansion:
+            alias_cases_total += 1
+            alias_success_count += int(bool(expected_entity_names.intersection(matched_entity_names)))
 
         intent_correct += int(intent_ok)
         evidence_presence_correct += int(evidence_ok)
@@ -293,6 +316,11 @@ def run_eval(fixtures_dir: Path) -> int:
     print(f"Canonical link precision: {canonical_precision_sum / total:.2%}")
     print(f"Canonical entity reuse  : {canonical_reuse_sum / total:.2%}")
     print(f"Cross-doc hit presence  : {cross_document_hits / total:.2%}")
+    if false_positive_total:
+        print(f"False positive rate     : {false_positive_count / false_positive_total:.2%}")
+        print(f"No-link correctness     : {no_link_correct / no_link_total:.2%}")
+    if alias_cases_total:
+        print(f"Alias expansion success : {alias_success_count / alias_cases_total:.2%}")
     return 0
 
 

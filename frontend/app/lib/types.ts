@@ -128,9 +128,13 @@ export interface NodeDetail {
   evidences: NodeEvidenceItem[];
   citations: NodeCitationItem[];
   linked_canonical_entity?: Record<string, unknown> | null;
+  canonical_link_reason?: string | null;
+  canonical_link_confidence?: number | null;
   canonical_aliases?: string[];
+  canonical_alias_count?: number;
   appears_in_documents?: number;
   top_related_documents?: string[];
+  document_distribution?: Array<{ document: string; count: number }>;
 }
 
 export interface SemanticEvidenceItem {

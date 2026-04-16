@@ -24,9 +24,11 @@ def _candidate(
     normalized_name: str,
     normalized_aliases=None,
     acronyms=None,
+    entity_type: str = "Method",
 ):
     return {
         "canonical_id": canonical_id,
+        "entity_type": entity_type,
         "canonical_name": canonical_name,
         "normalized_name": normalized_name,
         "aliases": [canonical_name],
@@ -84,7 +86,7 @@ def test_acronym_match():
 
 def test_type_mismatch_no_link():
     linker = EntityLinker(
-        db=FakeDB([_candidate("canonical_dataset:bert", "BERT", "bert")])
+        db=FakeDB([_candidate("canonical_dataset:bert", "BERT", "bert", entity_type="Dataset")])
     )
     decision = linker.link_entity(
         BaseEntity(type="Method", name="BERT", canonical_name="BERT", aliases=[], confidence=0.9)
@@ -96,7 +98,7 @@ def test_type_mismatch_no_link():
 def test_low_confidence_no_link():
     linker = EntityLinker(db=FakeDB([_candidate("canonical_method:transformer", "Transformer", "transformer")]))
     decision = linker.link_entity(
-        BaseEntity(type="Method", name="Transformer", canonical_name="Transformer", aliases=[], confidence=0.65)
+        BaseEntity(type="Method", name="Transformer", canonical_name="Transformer", aliases=[], confidence=0.85)
     )
     assert decision.matched is False
     assert decision.created_new is True
@@ -111,3 +113,34 @@ def test_new_canonical_creation():
     assert decision.matched is False
     assert decision.created_new is True
     assert decision.canonical_id.startswith("canonical_dataset:")
+
+
+def test_false_positive_not_linked_for_similar_name():
+    linker = EntityLinker(
+        db=FakeDB([_candidate("canonical_method:biobert", "BioBERT", "biobert", normalized_aliases=["biobert"])])
+    )
+    decision = linker.link_entity(
+        BaseEntity(type="Method", name="BERT", canonical_name="BERT", aliases=[], confidence=0.95)
+    )
+    assert decision.matched is False
+    assert decision.created_new is True
+
+
+def test_acronym_expansion_strong_pattern_matches():
+    linker = EntityLinker(
+        db=FakeDB(
+            [
+                _candidate(
+                    "canonical_method:bert",
+                    "Bidirectional Encoder Representations from Transformers",
+                    "bidirectional encoder representation from transformer",
+                    acronyms=["bert"],
+                )
+            ]
+        )
+    )
+    decision = linker.link_entity(
+        BaseEntity(type="Method", name="BERT", canonical_name="BERT", aliases=[], confidence=0.95)
+    )
+    assert decision.matched is True
+    assert decision.link_reason == "acronym_expansion_match"

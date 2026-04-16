@@ -167,6 +167,55 @@
           "reference_entry_id": "ref-smith-2021"
         }
       ]
+    },
+    {
+      "id": "doc-electrical-transformer",
+      "name": "electrical_transformers.pdf",
+      "entities": [
+        { "id": "m-electrical-transformer", "type": "Method", "display_name": "Electrical Transformer" },
+        { "id": "c-voltage-conversion", "type": "Concept", "display_name": "Voltage Conversion" }
+      ],
+      "evidence": [
+        {
+          "entity_id": "m-electrical-transformer",
+          "relation_type": "USES",
+          "snippet": "An electrical transformer changes voltage levels in alternating current systems.",
+          "section": "System",
+          "page": 2
+        }
+      ]
+    },
+    {
+      "id": "doc-biobert",
+      "name": "biobert_report.pdf",
+      "entities": [
+        { "id": "m-biobert", "type": "Method", "display_name": "BioBERT", "aliases": ["biobert model"] }
+      ],
+      "evidence": [
+        {
+          "entity_id": "m-biobert",
+          "relation_type": "USES",
+          "snippet": "BioBERT improves biomedical named entity recognition compared with prior models.",
+          "section": "Results",
+          "page": 7
+        }
+      ]
+    },
+    {
+      "id": "doc-resnet50",
+      "name": "resnet50_benchmarks.pdf",
+      "entities": [
+        { "id": "m-resnet50", "type": "Method", "display_name": "ResNet-50", "aliases": ["resnet fifty"] }
+      ],
+      "evidence": [
+        {
+          "entity_id": "m-resnet50",
+          "relation_type": "EVALUATED_ON",
+          "snippet": "ResNet-50 reaches stronger ImageNet top-1 accuracy than compact variants.",
+          "section": "Methods",
+          "page": 4
+        }
+      ]
     }
   ]
 }

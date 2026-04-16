@@ -11,6 +11,7 @@ import re
 from backend.app.domain.identity import build_entity_uid
 from backend.app.schemas.entities import BaseEntity
 from backend.app.schemas.extraction import ExtractionResult
+from backend.app.services.normalization.entity_linker import TYPE_MIN_CONFIDENCE
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ STOP_NAMES = {
     "figure", "table", "section", "chapter",
 }
 
-# Confidence threshold — entities below this are dropped
+# Fallback threshold for unsupported types.
 CONFIDENCE_THRESHOLD = 0.6
 AGGRESSIVE_SIMPLIFY_TYPES = {"Method", "Concept"}
 LEADING_DETERMINER_RE = re.compile(r"^(?:the|a|an)\s+", flags=re.IGNORECASE)
@@ -132,7 +133,8 @@ def normalize_entities(extraction: ExtractionResult) -> ExtractionResult:
             continue
 
         # Drop low confidence
-        if entity.confidence < CONFIDENCE_THRESHOLD:
+        type_threshold = TYPE_MIN_CONFIDENCE.get(entity.type, CONFIDENCE_THRESHOLD)
+        if entity.confidence < type_threshold:
             logger.debug(
                 "Dropping low-confidence entity: '%s' (%.2f)",
                 clean,

@@ -8,7 +8,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from backend.app.services.legacy.retrieval import GraphRAGService
+from backend.app.legacy.services.legacy.retrieval import GraphRAGService
 
 router = APIRouter()
 

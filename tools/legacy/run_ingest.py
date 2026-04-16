@@ -9,7 +9,7 @@ import logging
 import sys
 from pathlib import Path
 
-from backend.app.services.ingestion import IngestionService
+from backend.app.legacy.services.ingestion.legacy_ingestion_service import IngestionService
 
 # Configure logging to see what's happening
 logging.basicConfig(

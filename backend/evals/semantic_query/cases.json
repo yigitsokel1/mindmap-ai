@@ -75,7 +75,60 @@
       "expected_sections": ["System"],
       "expected_citation_presence": false,
       "expected_keywords": ["rag", "retrieval", "generation"],
-      "expected_cross_document_hit": true
+      "expected_cross_document_hit": true,
+      "case_type": "alias_expansion",
+      "expects_alias_expansion": true
+    },
+    {
+      "id": "ambiguous-transformer-electrical",
+      "document_id": "doc-electrical-transformer",
+      "question": "How is transformer used in voltage conversion?",
+      "expected_intent": "METHOD_USAGE",
+      "expected_entities": ["Electrical Transformer"],
+      "expected_sections": ["System"],
+      "expected_citation_presence": false,
+      "expected_keywords": ["voltage", "electrical", "power"],
+      "expected_cross_document_hit": false,
+      "case_type": "ambiguous"
+    },
+    {
+      "id": "false-positive-bert-biobert",
+      "document_id": "doc-biobert",
+      "question": "Summarize BERT findings in this biomedical paper.",
+      "expected_intent": "SUMMARY",
+      "expected_entities": [],
+      "expected_sections": ["Results"],
+      "expected_citation_presence": false,
+      "expected_keywords": ["bert", "biomedical"],
+      "expected_cross_document_hit": false,
+      "case_type": "false_positive_trap",
+      "expected_no_link": true
+    },
+    {
+      "id": "false-positive-resnet-resnet50",
+      "document_id": "doc-resnet50",
+      "question": "Is ResNet equivalent to ResNet-50 in this context?",
+      "expected_intent": "RELATION_LOOKUP",
+      "expected_entities": [],
+      "expected_sections": ["Methods"],
+      "expected_citation_presence": false,
+      "expected_keywords": ["resnet", "resnet-50"],
+      "expected_cross_document_hit": false,
+      "case_type": "false_positive_trap",
+      "expected_no_link": true
+    },
+    {
+      "id": "weak-signal-partial-attention",
+      "document_id": "doc-transformer",
+      "question": "Tell me about attn in this paper.",
+      "expected_intent": "SUMMARY",
+      "expected_entities": [],
+      "expected_sections": ["Methods"],
+      "expected_citation_presence": false,
+      "expected_keywords": ["attention"],
+      "expected_cross_document_hit": false,
+      "case_type": "weak_signal",
+      "expected_no_link": true
     }
   ]
 }

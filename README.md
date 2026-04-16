@@ -118,7 +118,6 @@ Mode options:
 ### 2. Read Graph
 
 - `GET /api/graph/semantic` → semantic default response contract (`nodes`, `edges`, `meta`)
-- `GET /api/graph` → compatibility alias (deprecated, same contract)
 
 Semantic filters on `GET /api/graph/semantic`:
 - `document_id`

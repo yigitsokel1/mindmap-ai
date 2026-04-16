@@ -455,8 +455,7 @@ As of Sprint 4, the semantic ingestion path is **primary**:
 
 As of Sprint 7, read paths are explicitly separated:
 
-- `GET /api/graph` is now semantic default read path.
-- `GET /api/graph/semantic` is available as explicit semantic endpoint.
+- `GET /api/graph/semantic` is the only supported semantic graph read path.
 - `GET /api/graph/legacy` keeps legacy Document/Chunk visualization behavior.
 - Semantic graph response contract is standardized in `backend/app/schemas/graph_response.py`.
 - `POST /api/chat` is explicitly marked as legacy retrieval path (semantic chat pending).
@@ -467,7 +466,7 @@ Runtime truth table after Sprint 7:
 | Capability | Primary Path | Migration/Fallback Path |
 |------------|--------------|-------------------------|
 | Ingestion | `POST /api/ingest?mode=semantic` | `POST /api/ingest?mode=legacy` |
-| Graph Read | `GET /api/graph` / `GET /api/graph/semantic` | `GET /api/graph/legacy` |
+| Graph Read | `GET /api/graph/semantic` | `GET /api/graph/legacy` |
 | Chat | pending semantic chat | `POST /api/chat` (legacy retrieval) |
 
 ---
@@ -502,7 +501,7 @@ Runtime truth table after Sprint 10:
 | Capability | Primary Path | Migration/Fallback Path |
 |------------|--------------|-------------------------|
 | Ingestion | `POST /api/ingest?mode=semantic` | `POST /api/ingest?mode=legacy` |
-| Graph Read | `GET /api/graph` / `GET /api/graph/semantic` | `GET /api/graph/legacy` |
+| Graph Read | `GET /api/graph/semantic` | `GET /api/graph/legacy` |
 | Query/QA | `POST /api/query/semantic` | `POST /api/chat` (legacy retrieval) |
 
 ---

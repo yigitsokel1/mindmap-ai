@@ -6,6 +6,7 @@ import re
 from typing import List
 
 from backend.app.schemas.semantic_query import CandidateEntity, MatchedEntityItem, RelatedNodeItem
+from backend.app.services.normalization.canonical_normalizer import normalize_for_match
 from backend.app.services.query.question_interpreter import InterpretedQuestion
 from backend.app.services.query.semantic_query_reader import SemanticQueryReader
 
@@ -51,7 +52,13 @@ class CandidateSelector:
                 continue
             if candidate.source == "canonical-ready" and existing.source != "canonical-ready":
                 merged_by_id[candidate.entity_id] = candidate
-        ranked = sorted(merged_by_id.values(), key=lambda item: item.score, reverse=True)
+        canonical_clusters: dict[str, CandidateEntity] = {}
+        for item in sorted(merged_by_id.values(), key=lambda entry: entry.score, reverse=True):
+            cluster_key = normalize_for_match(item.name) or item.entity_id
+            existing = canonical_clusters.get(cluster_key)
+            if existing is None or item.score > existing.score:
+                canonical_clusters[cluster_key] = item
+        ranked = sorted(canonical_clusters.values(), key=lambda item: item.score, reverse=True)
         return ranked[:20]
 
     @staticmethod

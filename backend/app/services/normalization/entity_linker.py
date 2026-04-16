@@ -15,10 +15,16 @@ from backend.app.core.db import Neo4jDatabase
 from backend.app.domain.identity import build_entity_uid
 from backend.app.schemas.entities import BaseEntity
 from backend.app.schemas.extraction import ExtractionResult
+from backend.app.services.normalization.canonical_normalizer import normalize_for_match
 
 LINKABLE_TYPES = {"Concept", "Method", "Dataset", "Metric", "Paper"}
-LINK_MIN_CONFIDENCE = 0.8
-TOKEN_RE = re.compile(r"[^a-z0-9]+")
+TYPE_MIN_CONFIDENCE = {
+    "Method": 0.9,
+    "Dataset": 0.78,
+    "Concept": 0.84,
+    "Metric": 0.84,
+    "Paper": 0.88,
+}
 ACRONYM_RE = re.compile(r"[A-Z]{2,8}$")
 
 
@@ -76,11 +82,12 @@ class EntityLinker:
     def link_entity(self, entity: BaseEntity) -> LinkDecision:
         """Link one normalized entity to an existing canonical or new canonical."""
         canonical_name = entity.canonical_name or entity.name
-        normalized_name = _normalize(canonical_name)
+        normalized_name = normalize_for_match(canonical_name)
         aliases = [alias for alias in dict.fromkeys(entity.aliases or []) if alias]
-        normalized_aliases = {_normalize(alias) for alias in aliases if _normalize(alias)}
+        normalized_aliases = {normalize_for_match(alias) for alias in aliases if normalize_for_match(alias)}
+        min_confidence = TYPE_MIN_CONFIDENCE.get(entity.type, 0.9)
 
-        if entity.type not in LINKABLE_TYPES or entity.confidence < LINK_MIN_CONFIDENCE:
+        if entity.type not in LINKABLE_TYPES or entity.confidence < min_confidence:
             canonical_id = _canonical_id(entity.type, normalized_name)
             return LinkDecision(
                 canonical_id=canonical_id,
@@ -106,7 +113,7 @@ class EntityLinker:
                 entity_name=entity.name,
                 candidate=candidate,
             )
-            if reason and confidence >= LINK_MIN_CONFIDENCE:
+            if reason and confidence >= min_confidence:
                 return LinkDecision(
                     canonical_id=str(candidate.get("canonical_id")),
                     matched=True,
@@ -115,7 +122,11 @@ class EntityLinker:
                     created_new=False,
                     canonical_name=str(candidate.get("canonical_name") or canonical_name),
                     normalized_name=str(candidate.get("normalized_name") or normalized_name),
-                    aliases=sorted(set(aliases + list(candidate.get("aliases") or []))),
+                    aliases=_merge_aliases(
+                        aliases=aliases,
+                        candidate_aliases=list(candidate.get("aliases") or []),
+                        link_confidence=confidence,
+                    ),
                 )
 
         canonical_id = _canonical_id(entity.type, normalized_name)
@@ -198,12 +209,19 @@ def _score_candidate(
     if normalized_aliases.intersection(candidate_aliases):
         return "normalized_alias_match", 0.9
 
-    normalized_entity_name = _normalize(entity_name)
+    normalized_entity_name = normalize_for_match(entity_name)
     if normalized_entity_name in candidate_acronyms or normalized_name in candidate_acronyms:
-        return "acronym_expansion_match", 0.86
+        return "acronym_expansion_match", 0.92
 
-    if _acronym(entity_name) and _acronym(entity_name).lower() in candidate_acronyms:
-        return "acronym_expansion_match", 0.84
+    entity_acronym = _acronym(entity_name)
+    if entity_acronym and entity_acronym.lower() in candidate_acronyms:
+        return "acronym_expansion_match", 0.91
+
+    candidate_name = str(candidate.get("canonical_name") or "")
+    if _acronym(candidate_name) and _acronym(candidate_name).lower() == normalized_name:
+        return "acronym_expansion_match", 0.88
+    if entity_acronym and _looks_like_expansion_match(entity_name, candidate_name, entity_acronym):
+        return "acronym_expansion_match", 0.9
 
     return None, 0.0
 
@@ -211,14 +229,6 @@ def _score_candidate(
 def _canonical_id(entity_type: str, normalized_name: str) -> str:
     safe_name = normalized_name or "unknown"
     return build_entity_uid(f"canonical_{entity_type}", safe_name)
-
-
-def _normalize(value: str | None) -> str:
-    if not value:
-        return ""
-    lowered = value.strip().lower()
-    compact = TOKEN_RE.sub(" ", lowered)
-    return " ".join(compact.split())
 
 
 def _acronym(value: str) -> str:
@@ -246,7 +256,12 @@ def build_canonical_payload(entity: BaseEntity, decision: LinkDecision) -> dict:
             if acronym
         )
     )
-    normalized_aliases = sorted(set(_normalize(alias) for alias in alias_values if alias))
+    normalized_aliases = sorted(set(normalize_for_match(alias) for alias in alias_values if alias))
+    allow_alias_learning = (
+        decision.matched
+        and decision.link_confidence >= 0.92
+        and decision.link_reason in {"normalized_exact_match", "normalized_alias_match"}
+    )
     return {
         "canonical_id": decision.canonical_id,
         "entity_type": entity.type,
@@ -257,9 +272,28 @@ def build_canonical_payload(entity: BaseEntity, decision: LinkDecision) -> dict:
         "acronyms": acronyms,
         "link_reason": decision.link_reason,
         "link_confidence": decision.link_confidence,
+        "allow_alias_learning": allow_alias_learning,
         "created_at": now_iso(),
     }
 
 
 def iter_linkable_entities(entities: Iterable[BaseEntity]) -> list[BaseEntity]:
     return [entity for entity in entities if entity.type in LINKABLE_TYPES]
+
+
+def _merge_aliases(aliases: list[str], candidate_aliases: list[str], link_confidence: float) -> list[str]:
+    if link_confidence < 0.92:
+        return sorted(set(aliases))
+    return sorted(set(aliases + candidate_aliases))
+
+
+def _looks_like_expansion_match(short_name: str, long_name: str, acronym: str) -> bool:
+    if not acronym or len(acronym) < 2:
+        return False
+    if not short_name.isupper() and short_name.upper() != acronym:
+        return False
+    tokens = [part for part in re.split(r"[^A-Za-z0-9]+", long_name) if part]
+    if len(tokens) < len(acronym):
+        return False
+    initials = "".join(token[0].upper() for token in tokens if token[0].isalnum())
+    return initials.startswith(acronym)

@@ -26,7 +26,7 @@ Use it after backend tests pass, and record pass/fail notes with timestamps.
 
 ## 4) Graph API filters
 
-- [ ] Call `GET /api/graph` with `document_id` and verify only target document scope is returned.
+- [ ] Call `GET /api/graph/semantic` with `document_id` and verify only target document scope is returned.
 - [ ] Validate `node_types` filtering using CSV and repeated query parameter forms.
 - [ ] Toggle `include_structural`, `include_evidence`, `include_citations` and verify edge subsets change as expected.
 - [ ] Confirm response contract remains `nodes`, `edges`, `meta`.

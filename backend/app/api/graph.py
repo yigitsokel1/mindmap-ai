@@ -82,25 +82,6 @@ async def get_semantic_graph(
     )
 
 
-@router.get("/graph", response_model=GraphResponse)
-async def get_graph_compat(
-    document_id: Optional[str] = None,
-    node_types: Optional[List[str]] = Query(default=None),
-    include_structural: bool = True,
-    include_evidence: bool = False,
-    include_citations: bool = False,
-) -> GraphResponse:
-    """Compatibility alias for clients that still call `/api/graph`."""
-    logger.warning("Deprecated graph alias called: prefer /api/graph/semantic")
-    return _build_semantic_graph(
-        document_id=document_id,
-        node_types=node_types,
-        include_structural=include_structural,
-        include_evidence=include_evidence,
-        include_citations=include_citations,
-    )
-
-
 @router.get("/graph/node/{node_id}", response_model=NodeDetail)
 async def get_node_detail(node_id: str, document_id: Optional[str] = None) -> NodeDetail:
     """Return explainable inspector detail for a specific semantic node."""

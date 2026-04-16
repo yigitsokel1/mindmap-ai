@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from backend.app.core.db import Neo4jDatabase
 from backend.app.schemas.semantic_query import CandidateEntity, SemanticEvidenceItem
+from backend.app.services.normalization.canonical_normalizer import normalize_for_match
 from backend.app.services.query.traversal_planner import TraversalPlan
 
 
@@ -155,7 +156,9 @@ class SemanticQueryReader:
                 key = (
                     self._element_id(relation_instance),
                     self._element_id(evidence) if evidence is not None else "",
-                    self._element_id(passage) if passage is not None else "",
+                    self._canonicalize_snippet(
+                        str(passage.get("text", "") if passage is not None else evidence.get("text", "") if evidence is not None else "")
+                    ),
                 )
                 if key in seen_keys:
                     continue
@@ -207,9 +210,10 @@ class SemanticQueryReader:
         ORDER BY doc_count DESC
         LIMIT 20
         """
+        normalized_tokens = [normalize_for_match(token) for token in tokens if normalize_for_match(token)]
         records, _, _ = self.db.driver.execute_query(  # type: ignore[union-attr]
             query,
-            {"tokens": list(tokens)},
+            {"tokens": normalized_tokens},
         )
         candidates: List[CandidateEntity] = []
         for record in records:
@@ -397,3 +401,7 @@ class SemanticQueryReader:
             return str(entity.id)
         uid = entity.get("uid") if hasattr(entity, "get") else None
         return str(uid or "")
+
+    @staticmethod
+    def _canonicalize_snippet(text: str) -> str:
+        return " ".join((text or "").strip().lower().split())
