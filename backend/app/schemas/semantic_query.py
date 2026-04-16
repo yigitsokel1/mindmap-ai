@@ -47,6 +47,15 @@ class MatchedEntityItem(BaseModel):
     display_name: str
 
 
+class CandidateEntity(BaseModel):
+    entity_id: str
+    name: str
+    type: str
+    score: float = 0.0
+    match_reason: str
+    source: Literal["local", "canonical-ready", "alias"] = "local"
+
+
 class QueryExplanation(BaseModel):
     why_these_entities: List[str] = Field(default_factory=list)
     why_this_evidence: List[str] = Field(default_factory=list)

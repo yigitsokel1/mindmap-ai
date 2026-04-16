@@ -129,6 +129,53 @@ class SemanticGraphReader:
             citations=citations,
         )
 
+    # Query candidate reads (extension-ready for canonical linking)
+    def read_candidate_entities(
+        self,
+        tokens: List[str],
+        document_id: Optional[str] = None,
+        node_types: Optional[List[str]] = None,
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
+        """Read candidate semantic nodes for query-time selection."""
+        if not tokens:
+            return []
+        query = """
+        MATCH (n)
+        WHERE any(lbl IN labels(n) WHERE lbl IN ['Author', 'Institution', 'Concept', 'Method', 'Dataset', 'Metric', 'Task'])
+          AND (
+            size($node_types) = 0
+            OR any(label IN labels(n) WHERE label IN $node_types)
+          )
+          AND (
+            $document_id IS NULL
+            OR EXISTS {
+                MATCH (n)-[:OUT_REL]->(:RelationInstance)<-[:SUPPORTS]-(:Evidence)-[:FROM_PASSAGE]->(:Passage)<-[:HAS_PASSAGE]-(:Section)<-[:HAS_SECTION]-(d:Document {uid: $document_id})
+            }
+          )
+          AND any(token IN $tokens WHERE
+            toLower(coalesce(n.canonical_name, "")) CONTAINS token
+            OR toLower(coalesce(n.name, "")) CONTAINS token
+            OR toLower(coalesce(n.title, "")) CONTAINS token
+          )
+        RETURN DISTINCT n
+        LIMIT $limit
+        """
+        records, _, _ = self.db.driver.execute_query(  # type: ignore[union-attr]
+            query,
+            {
+                "tokens": [token.lower() for token in tokens],
+                "document_id": document_id,
+                "node_types": node_types or [],
+                "limit": limit,
+            },
+        )
+        return records
+
+    def read_canonical_lookup_candidates(self, _: List[str]) -> List[Dict[str, Any]]:
+        """Reserved read contract for future cross-document canonical lookup."""
+        return []
+
     def _resolve_labels(self, filters: SemanticGraphFilters) -> Set[str]:
         labels = set(self.BASE_NODE_TYPES)
         if filters.include_structural:
@@ -396,6 +443,13 @@ class SemanticGraphReader:
     def _safe_float(value: Any) -> Optional[float]:
         try:
             return float(value) if value is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _safe_int(value: Any) -> Optional[int]:
+        try:
+            return int(value) if value is not None else None
         except (TypeError, ValueError):
             return None
 

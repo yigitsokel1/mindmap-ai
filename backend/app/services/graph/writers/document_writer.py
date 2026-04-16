@@ -1,11 +1,15 @@
 """Document and structure writer for semantic graph persistence."""
 
+from backend.app.core.db import Neo4jDatabase
 from backend.app.schemas.document_structure import ReferenceRecord, SectionRecord
 from backend.app.schemas.passage import PassageRecord
 
 
 class DocumentStructureWriter:
     """Writes document, passage, section, and reference structures."""
+
+    def __init__(self) -> None:
+        self.db = Neo4jDatabase()
 
     def ensure_document(self, session, document_id: str, metadata: dict | None = None) -> None:
         """MERGE a Document node with optional metadata."""
@@ -125,6 +129,41 @@ class DocumentStructureWriter:
                     "now": _now_iso(),
                 },
             )
+
+    def check_duplicate_by_hash(self, file_hash: str) -> str | None:
+        """Lookup an existing document uid by file hash."""
+        if not self.db.driver:
+            self.db.connect()
+        result, _, _ = self.db.execute_query_with_retry(
+            "MATCH (d:Document) WHERE d['file_hash'] = $hash RETURN d.uid AS uid LIMIT 1",
+            {"hash": file_hash},
+        )
+        if not result:
+            return None
+        return result[0].get("uid")
+
+    def store_document_metadata(
+        self,
+        document_id: str,
+        file_name: str,
+        file_hash: str,
+        saved_name: str,
+    ) -> None:
+        """Persist document-level file metadata through the writer layer."""
+        if not self.db.driver:
+            self.db.connect()
+        self.db.execute_query_with_retry(
+            "MERGE (d:Document {uid: $uid}) "
+            "SET d.file_name = $file_name, "
+            "    d.file_hash = $file_hash, "
+            "    d.saved_file_name = $saved_name",
+            {
+                "uid": document_id,
+                "file_name": file_name,
+                "file_hash": file_hash,
+                "saved_name": saved_name,
+            },
+        )
 
 
 def _now_iso() -> str:

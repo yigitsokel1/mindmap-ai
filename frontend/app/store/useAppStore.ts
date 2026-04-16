@@ -17,40 +17,45 @@ function sameFilters(a: GraphFilters, b: GraphFilters): boolean {
 }
 
 interface AppState {
-  // UI State
+  // Query/UI state
   isCommandCenterOpen: boolean;
   activeTab: "query" | "files";
   mode: "semantic";
+
+  // Inspector state
   isPDFViewerOpen: boolean;
+  selectedNodeContext: NodeContext | null;
+  setSelectedNodeContext: (context: NodeContext | null) => void;
+
+  // Graph state
   selectedNodeId: string | null;
-  
-  // PDF Viewer State
-  pdfUrl: string | null;
-  pdfDocName: string | null;
-  pdfPage: number | null;
-  
-  // Graph State
   highlightedNodeIds: string[];
-  isGraphFocused: boolean; // For blur/dim effect when panels are open
+  isGraphFocused: boolean;
   graphPreset: GraphPreset;
-  selectedDocumentId: string | null;
   graphFilters: GraphFilters;
   graphRefreshToken: number;
-  selectedNodeContext: NodeContext | null;
-  
-  // Actions
-  toggleCommandCenter: () => void;
-  setActiveTab: (tab: "query" | "files") => void;
+
+  // Document/filter state
+  selectedDocumentId: string | null;
+
+  // Inspector actions
   openPDFViewer: (url: string, docName: string, page: number) => void;
   closePDFViewer: () => void;
+
+  // Query/UI actions
+  toggleCommandCenter: () => void;
+  setActiveTab: (tab: "query" | "files") => void;
+
+  // Graph actions
   setSelectedNode: (nodeId: string | null) => void;
   setHighlightedNodes: (nodeIds: string[]) => void;
   setGraphFocused: (focused: boolean) => void;
   setGraphPreset: (preset: GraphPreset) => void;
-  setSelectedDocumentId: (documentId: string | null) => void;
   updateGraphFilters: (filters: Partial<GraphFilters>) => void;
   requestGraphRefresh: () => void;
-  setSelectedNodeContext: (context: NodeContext | null) => void;
+
+  // Document/filter actions
+  setSelectedDocumentId: (documentId: string | null) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -59,6 +64,7 @@ export const useAppStore = create<AppState>((set) => ({
   activeTab: "query",
   mode: "semantic",
   isPDFViewerOpen: false,
+  selectedNodeContext: null,
   selectedNodeId: null,
   pdfUrl: null,
   pdfDocName: null,
@@ -66,10 +72,9 @@ export const useAppStore = create<AppState>((set) => ({
   highlightedNodeIds: [],
   isGraphFocused: true,
   graphPreset: "semantic",
-  selectedDocumentId: null,
   graphFilters: { ...PRESET_FILTERS.semantic },
   graphRefreshToken: 0,
-  selectedNodeContext: null,
+  selectedDocumentId: null,
   
   // Actions
   toggleCommandCenter: () => set((state) => ({ isCommandCenterOpen: !state.isCommandCenterOpen })),
@@ -131,7 +136,10 @@ export const useAppStore = create<AppState>((set) => ({
       if (sameFilters(state.graphFilters, nextFilters)) {
         return state;
       }
-      return { graphFilters: nextFilters };
+      return {
+        graphFilters: nextFilters,
+        selectedDocumentId: nextFilters.document_id || null,
+      };
     }),
   requestGraphRefresh: () =>
     set((state) => ({

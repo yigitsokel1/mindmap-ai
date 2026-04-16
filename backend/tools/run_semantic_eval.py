@@ -13,7 +13,9 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from backend.app.schemas.semantic_query import SemanticEvidenceItem, SemanticQueryRequest
+from backend.app.schemas.semantic_query import CandidateEntity, SemanticEvidenceItem, SemanticQueryRequest
+from backend.app.services.query.candidate_selector import CandidateSelector
+from backend.app.services.query.semantic_query_reader import SemanticQueryReader
 from backend.app.services.query.semantic_query_service import SemanticQueryService
 
 
@@ -41,20 +43,19 @@ class FixtureNode:
         return self._props.get(key, default)
 
 
-class FixtureSemanticQueryService(SemanticQueryService):
-    """Semantic service that reads deterministic graph data from fixtures."""
+class FixtureSemanticQueryReader(SemanticQueryReader):
+    """Fixture-backed reader for deterministic eval cases."""
 
     def __init__(self, fixtures: Dict[str, Any]) -> None:
         self._fixtures = fixtures
-        super().__init__()
 
-    def _find_candidate_nodes(  # type: ignore[override]
+    def find_candidate_entities(
         self,
         tokens: Sequence[str],
         document_id: str | None,
         node_types: Sequence[str],
         limit: int = 20,
-    ) -> List[Dict[str, Any]]:
+    ) -> List[CandidateEntity]:
         if not document_id:
             return []
         doc = self._fixtures.get(document_id)
@@ -62,40 +63,42 @@ class FixtureSemanticQueryService(SemanticQueryService):
             return []
 
         token_set = {token.lower() for token in tokens}
-        records: List[Dict[str, Any]] = []
+        candidates: List[CandidateEntity] = []
         for entity in doc.get("entities", []):
             display = str(entity.get("display_name", ""))
             if node_types and entity.get("type") not in set(node_types):
                 continue
             if not token_set or any(token in display.lower() for token in token_set):
-                records.append(
-                    {
-                        "n": FixtureNode(
-                            node_id=str(entity["id"]),
-                            node_type=str(entity["type"]),
-                            display_name=display,
-                        )
-                    }
+                candidates.append(
+                    CandidateEntity(
+                        entity_id=str(entity["id"]),
+                        type=str(entity["type"]),
+                        name=display,
+                        score=1.0,
+                        match_reason="fixture_token_match",
+                        source="local",
+                    )
                 )
-        if not records:
+        if not candidates:
             for entity in doc.get("entities", [])[: min(2, limit)]:
-                records.append(
-                    {
-                        "n": FixtureNode(
-                            node_id=str(entity["id"]),
-                            node_type=str(entity["type"]),
-                            display_name=str(entity["display_name"]),
-                        )
-                    }
+                candidates.append(
+                    CandidateEntity(
+                        entity_id=str(entity["id"]),
+                        type=str(entity["type"]),
+                        name=str(entity["display_name"]),
+                        score=0.7,
+                        match_reason="fixture_fallback",
+                        source="local",
+                    )
                 )
-        return records[:limit]
+        return candidates[:limit]
 
-    def _collect_evidence(  # type: ignore[override]
+    def collect_evidence(
         self,
-        candidate_nodes: Sequence[Dict[str, Any]],
+        candidates: Sequence[CandidateEntity],
         max_evidence: int,
         document_id: str | None,
-        traversal_plan: Any,
+        traversal_plan: Any,  # noqa: ARG002
     ) -> List[SemanticEvidenceItem]:
         if not document_id:
             return []
@@ -103,9 +106,7 @@ class FixtureSemanticQueryService(SemanticQueryService):
         if not doc:
             return []
 
-        candidate_ids = {
-            str(record["n"].element_id) for record in candidate_nodes if isinstance(record.get("n"), FixtureNode)
-        }
+        candidate_ids = {candidate.entity_id for candidate in candidates}
         items: List[SemanticEvidenceItem] = []
         for idx, evidence in enumerate(doc.get("evidence", [])):
             entity_id = str(evidence.get("entity_id"))
@@ -128,6 +129,15 @@ class FixtureSemanticQueryService(SemanticQueryService):
             if len(items) >= max_evidence:
                 break
         return items
+
+
+class FixtureSemanticQueryService(SemanticQueryService):
+    """Semantic service that reads deterministic graph data from fixtures."""
+
+    def __init__(self, fixtures: Dict[str, Any]) -> None:
+        super().__init__()
+        self.reader = FixtureSemanticQueryReader(fixtures=fixtures)
+        self.candidate_selector = CandidateSelector(self.reader)
 
 
 def _load_json(path: Path) -> Dict[str, Any]:

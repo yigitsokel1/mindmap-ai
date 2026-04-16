@@ -21,7 +21,7 @@ export default function Inspector() {
   const [nodeDetail, setNodeDetail] = useState<NodeDetail | null>(null);
   const [isLoadingNodeDetail, setIsLoadingNodeDetail] = useState(false);
   const [nodeDetailError, setNodeDetailError] = useState<string | null>(null);
-  const contextDetails = (selectedNodeContext?.details || {}) as Record<string, unknown>;
+  const contextDetails = ((nodeDetail || selectedNodeContext?.details || {}) as Record<string, unknown>);
 
   useEffect(() => {
     const contextId = selectedNodeContext?.id;
@@ -41,10 +41,6 @@ export default function Inspector() {
         const detail = (await response.json()) as NodeDetail;
         if (!cancelled) {
           setNodeDetail(detail);
-          setSelectedNodeContext({
-            ...selectedNodeContext,
-            details: detail,
-          });
         }
       } catch {
         if (!cancelled) {
@@ -106,7 +102,10 @@ export default function Inspector() {
 
           {selectedNodeContext && (
             <div className="px-4 py-3 border-b border-white/10 bg-black/30">
-              <p className="text-[10px] text-cyan-300 uppercase font-mono tracking-wide">
+              <p
+                className="text-[10px] text-cyan-300 uppercase font-mono tracking-wide"
+                data-testid="inspector-context-label"
+              >
                 {selectedNodeContext.label}
               </p>
               <p className="text-xs text-white/90 font-mono mt-1">{selectedNodeContext.title}</p>
@@ -154,13 +153,18 @@ export default function Inspector() {
                     {selectedNodeContext.rawText}
                   </p>
                 )}
-                {selectedNodeContext.details && (
+                {Object.keys(contextDetails).length > 0 && (
                   <>
                     {Array.isArray(
                       (contextDetails.grouped_relations as { incoming?: unknown[] } | undefined)?.incoming
                     ) && (
                       <div className="mb-3">
-                        <p className="text-[10px] text-cyan-300 font-mono uppercase mb-1">Incoming Relations</p>
+                        <p
+                          className="text-[10px] text-cyan-300 font-mono uppercase mb-1"
+                          data-testid="incoming-relations-heading"
+                        >
+                          Incoming Relations
+                        </p>
                         {(
                           contextDetails.grouped_relations as {
                             incoming: Array<{ relation_type: string; count: number }>;
@@ -186,7 +190,12 @@ export default function Inspector() {
                       (contextDetails.grouped_relations as { outgoing?: unknown[] } | undefined)?.outgoing
                     ) && (
                       <div className="mb-3">
-                        <p className="text-[10px] text-cyan-300 font-mono uppercase mb-1">Outgoing Relations</p>
+                        <p
+                          className="text-[10px] text-cyan-300 font-mono uppercase mb-1"
+                          data-testid="outgoing-relations-heading"
+                        >
+                          Outgoing Relations
+                        </p>
                         {(
                           contextDetails.grouped_relations as {
                             outgoing: Array<{ relation_type: string; count: number }>;
@@ -243,7 +252,7 @@ export default function Inspector() {
                     </pre>
                   </>
                 )}
-                {!selectedNodeContext.details && !isLoadingNodeDetail && !nodeDetailError && (
+                {Object.keys(contextDetails).length === 0 && !isLoadingNodeDetail && !nodeDetailError && (
                   <p className="text-[10px] text-white/50 font-mono">No detail payload is available for this node.</p>
                 )}
               </div>

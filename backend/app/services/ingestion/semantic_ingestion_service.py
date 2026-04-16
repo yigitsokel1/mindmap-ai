@@ -19,10 +19,10 @@ from pathlib import Path
 from time import perf_counter
 from typing import Callable
 
-from backend.app.core.db import Neo4jDatabase
 from backend.app.services.parsing.document_parser import parse_document, ParseResult
 from backend.app.services.extraction.pipeline import ExtractionPipeline, PipelineResult
 from backend.app.services.graph.graph_writer import GraphWriter
+from backend.app.services.graph.writers.document_writer import DocumentStructureWriter
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -89,9 +89,9 @@ class SemanticIngestionService:
     """Primary ingestion service using semantic KG extraction."""
 
     def __init__(self, model: str = "gpt-4.1"):
-        self.db = Neo4jDatabase()
         self.pipeline = ExtractionPipeline(model=model)
         self.writer = GraphWriter()
+        self.document_writer = DocumentStructureWriter()
         self.uploaded_docs_dir = Path(__file__).parent.parent.parent.parent / "uploaded_docs"
         self.uploaded_docs_dir.mkdir(exist_ok=True)
 
@@ -153,7 +153,7 @@ class SemanticIngestionService:
         )
 
         # Step 5: Ensure document node has full metadata
-        self._store_document_metadata(document_id, file_name, file_hash, saved_name)
+        self.document_writer.store_document_metadata(document_id, file_name, file_hash, saved_name)
 
         # Step 6: Write section nodes to graph
         if parse_result.sections:
@@ -289,16 +289,7 @@ class SemanticIngestionService:
     def _check_duplicate(self, file_hash: str) -> str | None:
         """Check Neo4j for existing document with same file_hash."""
         try:
-            if not self.db.driver:
-                self.db.connect()
-
-            result, _, _ = self.db.execute_query_with_retry(
-                "MATCH (d:Document) WHERE d['file_hash'] = $hash RETURN d.uid AS uid LIMIT 1",
-                {"hash": file_hash},
-            )
-            if result:
-                return result[0]["uid"]
-            return None
+            return self.document_writer.check_duplicate_by_hash(file_hash)
         except Exception as e:
             logger.warning("Duplicate check failed: %s", e)
             return None
@@ -320,25 +311,3 @@ class SemanticIngestionService:
         logger.info("Saved file to %s", target)
         return safe_name
 
-    def _store_document_metadata(
-        self, document_id: str, file_name: str, file_hash: str, saved_name: str
-    ):
-        """Update Document node with file metadata."""
-        try:
-            if not self.db.driver:
-                self.db.connect()
-
-            self.db.execute_query_with_retry(
-                "MERGE (d:Document {uid: $uid}) "
-                "SET d.file_name = $file_name, "
-                "    d.file_hash = $file_hash, "
-                "    d.saved_file_name = $saved_name",
-                {
-                    "uid": document_id,
-                    "file_name": file_name,
-                    "file_hash": file_hash,
-                    "saved_name": saved_name,
-                },
-            )
-        except Exception as e:
-            logger.error("Failed to store document metadata: %s", e)

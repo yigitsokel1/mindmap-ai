@@ -251,3 +251,54 @@ def test_semantic_query_service_flags_missing_citation_basis(monkeypatch):
     assert result.uncertainty_signal is True
     assert result.uncertainty_reason == "citation_missing"
     assert "citation basis could not be verified" in result.answer.lower()
+
+
+def test_semantic_query_service_uses_fallback_candidates_when_token_match_empty(monkeypatch):
+    import backend.app.services.query.semantic_query_service as service_module
+
+    class FallbackDriver(FakeDriver):
+        def execute_query(self, query, params=None, database_=None):
+            if "toLower(coalesce(n.canonical_name" in query:
+                return ([], None, None)
+            if "graph_density_fallback" in str(params):
+                return ([], None, None)
+            if "RETURN DISTINCT n, relation_count, evidence_count, citation_count" in query:
+                return (
+                    [
+                        {
+                            "n": FakeNode("n-1", ["Method"], {"display_name": "Transformer"}),
+                            "relation_count": 3,
+                            "evidence_count": 2,
+                            "citation_count": 1,
+                        }
+                    ],
+                    None,
+                    None,
+                )
+            if "MATCH (n)-[:OUT_REL]->(ri:RelationInstance)" in query:
+                return (
+                    [
+                        {
+                            "ri": FakeNode("ri-1", ["RelationInstance"], {"type": "USES"}),
+                            "ev": FakeNode("ev-1", ["Evidence"], {"statement": "support statement"}),
+                            "p": FakeNode("p-1", ["Passage"], {"text": "support statement", "page_number": 3}),
+                            "d": FakeNode("d-1", ["Document"], {"uid": "doc-1", "name": "paper.pdf"}),
+                            "ic": FakeNode("ic-1", ["InlineCitation"], {"reference_labels": ["[1]"]}),
+                            "ref": FakeNode("ref-1", ["ReferenceEntry"], {"title_guess": "Reference"}),
+                        }
+                    ],
+                    None,
+                    None,
+                )
+            return ([], None, None)
+
+    class FallbackDB(FakeDB):
+        def __init__(self):
+            self.driver = FallbackDriver()
+
+    monkeypatch.setattr(service_module, "Neo4jDatabase", FallbackDB)
+    service = SemanticQueryService()
+    result = service.answer(SemanticQueryRequest(question="Which citations support this method?"))
+
+    assert result.matched_entities
+    assert result.evidence

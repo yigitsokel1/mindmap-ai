@@ -15,7 +15,7 @@ test("query submit shows answer and evidence", async ({ page }) => {
   await page.getByTestId("query-input").fill("What methods are used in this paper?");
   await page.getByTestId("query-send").click();
   await expect(page.getByText(/Answer · confidence/i)).toBeVisible();
-  await expect(page.getByText(/Top Evidence/i)).toBeVisible();
+  await expect(page.getByTestId("top-evidence-heading")).toBeVisible();
 });
 
 test("node inspect shows summary and grouped relations", async ({ page }) => {
@@ -29,7 +29,11 @@ test("node inspect shows summary and grouped relations", async ({ page }) => {
   await expect(inspectButton).toBeVisible();
   await inspectButton.click();
   await expect(page.getByText(/Node Details/i)).toBeVisible();
-  await expect(page.getByText(/Incoming Relations|Outgoing Relations|No incoming relations available/i)).toBeVisible();
+  await expect(
+    page
+      .locator('[data-testid="incoming-relations-heading"], [data-testid="outgoing-relations-heading"]')
+      .first()
+  ).toBeVisible();
 });
 
 test("citation click opens provenance panel", async ({ page }) => {
@@ -42,6 +46,6 @@ test("citation click opens provenance panel", async ({ page }) => {
   const citationItem = page.locator("[data-testid^='citation-item-']").first();
   await expect(citationItem).toBeVisible();
   await citationItem.click();
-  await expect(page.getByText(/Citation/i)).toBeVisible();
+  await expect(page.getByTestId("inspector-context-label")).toHaveText("Citation");
   await expect(page.getByText(/Node Details/i)).toBeVisible();
 });

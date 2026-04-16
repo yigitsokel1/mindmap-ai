@@ -397,7 +397,12 @@ export default function CommandCenter() {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <p className="text-[10px] uppercase tracking-wide text-purple-300 font-mono">Top Evidence</p>
+                    <p
+                      className="text-[10px] uppercase tracking-wide text-purple-300 font-mono"
+                      data-testid="top-evidence-heading"
+                    >
+                      Top Evidence
+                    </p>
                     {semanticResult.evidence.map((item, idx) => (
                       <button
                         key={`${item.related_node_ids.join("-")}-${idx}`}
@@ -433,7 +438,12 @@ export default function CommandCenter() {
                     )}
                   </div>
                   <div className="space-y-2">
-                    <p className="text-[10px] uppercase tracking-wide text-purple-300 font-mono">Citations</p>
+                    <p
+                      className="text-[10px] uppercase tracking-wide text-purple-300 font-mono"
+                      data-testid="citations-heading"
+                    >
+                      Citations
+                    </p>
                     {semanticResult.citations.map((citation, idx) => (
                       <button
                         key={`${citation.reference_entry_id || citation.label}-${idx}`}
