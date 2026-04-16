@@ -9,6 +9,10 @@ export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost
 export const API_ENDPOINTS = {
   GRAPH: `${API_BASE_URL}/api/graph`,
   GRAPH_SEMANTIC: `${API_BASE_URL}/api/graph/semantic`,
+  GRAPH_NODE_DETAIL: (nodeId: string, documentId?: string) =>
+    `${API_BASE_URL}/api/graph/node/${encodeURIComponent(nodeId)}${
+      documentId ? `?document_id=${encodeURIComponent(documentId)}` : ""
+    }`,
   QUERY_SEMANTIC: `${API_BASE_URL}/api/query/semantic`,
   INGEST: `${API_BASE_URL}/api/ingest`,
   INGEST_STATUS: (jobId: string) => `${API_BASE_URL}/api/ingest/${encodeURIComponent(jobId)}`,

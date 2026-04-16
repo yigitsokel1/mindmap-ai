@@ -1,5 +1,5 @@
 from backend.app.schemas.graph_response import GraphMeta, GraphResponse
-from backend.app.schemas.node_detail import NodeDetail, NodeRelations
+from backend.app.schemas.node_detail import NodeDetail, NodeGroupedRelations, NodeRelations
 
 
 class FakeGraphReader:
@@ -19,8 +19,12 @@ class FakeGraphReader:
             summary="Node summary",
             metadata={"uid": node_id},
             relations=NodeRelations(incoming=[], outgoing=[]),
-            evidences=[],
-            citations=[],
+            grouped_relations=NodeGroupedRelations(
+                incoming=[{"relation_type": "SUPPORTED_BY", "count": 1, "items": []}],
+                outgoing=[{"relation_type": "USES", "count": 2, "items": []}],
+            ),
+            evidences=[{"text": "evidence snippet", "passage_id": "p-1", "document_id": "doc-1"}],
+            citations=[{"title": "Ref", "label": "[1]"}],
         )
 
 
@@ -64,6 +68,10 @@ def test_graph_node_detail_endpoint_contract(api_client, monkeypatch):
     assert body["id"] == "n-1"
     assert body["type"] == "Method"
     assert "metadata" in body
+    assert "grouped_relations" in body
+    assert body["summary"]
+    assert body["evidences"]
+    assert body["citations"]
 
 
 def test_graph_node_detail_endpoint_not_found(api_client, monkeypatch):

@@ -11,6 +11,9 @@ class FakeSemanticQueryService:
                 "explanation": {
                     "why_these_entities": ["fallback semantic match"],
                     "why_this_evidence": ["no evidence available"],
+                    "reasoning_path": ["question_intent:SUMMARY"],
+                    "selected_sections": [],
+                    "selection_signals": ["entity_mention_match"],
                 },
                 "confidence": 0.0,
                 "mode": "semantic_grounded",
@@ -40,6 +43,9 @@ class FakeSemanticQueryService:
             "explanation": {
                 "why_these_entities": ["entity mention match"],
                 "why_this_evidence": ["ranked by citation and relation"],
+                "reasoning_path": ["question_intent:METHOD_USAGE"],
+                "selected_sections": ["Methods"],
+                "selection_signals": ["citation_signal_weighted_by_intent"],
             },
             "confidence": 0.81,
             "mode": "semantic_grounded",
@@ -63,6 +69,8 @@ def test_query_semantic_endpoint_contract(api_client, monkeypatch):
     assert body["evidence"][0]["relation_type"] == "USES"
     assert body["matched_entities"][0]["display_name"] == "Transformer"
     assert body["explanation"]["why_this_evidence"]
+    assert body["explanation"]["reasoning_path"]
+    assert "selection_signals" in body["explanation"]
     assert body["related_nodes"][0]["display_name"] == "Transformer"
 
 

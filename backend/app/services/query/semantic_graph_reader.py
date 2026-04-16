@@ -11,6 +11,8 @@ from backend.app.schemas.node_detail import (
     NodeCitationItem,
     NodeDetail,
     NodeEvidenceItem,
+    NodeGroupedRelations,
+    NodeRelationGroup,
     NodeRelationItem,
     NodeRelations,
 )
@@ -96,12 +98,24 @@ class SemanticGraphReader:
 
         node_type = self._primary_label(node)
         node_name = self._display_name(node)
-        summary = str(node.get("summary") or node.get("description") or "")
         metadata = self._sanitize_metadata(dict(node.items()))
         incoming = self._load_relation_neighbors(node_id, direction="incoming", document_id=document_id)
         outgoing = self._load_relation_neighbors(node_id, direction="outgoing", document_id=document_id)
         evidences = self._load_node_evidences(node_id, document_id=document_id)
         citations = self._load_node_citations(node_id, document_id=document_id)
+        grouped_relations = NodeGroupedRelations(
+            incoming=self._group_relations(incoming),
+            outgoing=self._group_relations(outgoing),
+        )
+        summary = self._build_node_summary(
+            node_type=node_type,
+            node_name=node_name,
+            incoming=incoming,
+            outgoing=outgoing,
+            evidences=evidences,
+            citations=citations,
+            metadata=metadata,
+        )
 
         return NodeDetail(
             id=node_id,
@@ -110,6 +124,7 @@ class SemanticGraphReader:
             summary=summary,
             metadata=metadata,
             relations=NodeRelations(incoming=incoming, outgoing=outgoing),
+            grouped_relations=grouped_relations,
             evidences=evidences,
             citations=citations,
         )
@@ -383,6 +398,54 @@ class SemanticGraphReader:
             return float(value) if value is not None else None
         except (TypeError, ValueError):
             return None
+
+    @staticmethod
+    def _group_relations(relations: List[NodeRelationItem]) -> List[NodeRelationGroup]:
+        grouped: Dict[str, List[NodeRelationItem]] = {}
+        for relation in relations:
+            grouped.setdefault(relation.type, []).append(relation)
+        items: List[NodeRelationGroup] = []
+        for relation_type, members in grouped.items():
+            items.append(
+                NodeRelationGroup(
+                    relation_type=relation_type,
+                    count=len(members),
+                    items=members,
+                )
+            )
+        items.sort(key=lambda group: group.count, reverse=True)
+        return items
+
+    @staticmethod
+    def _build_node_summary(
+        node_type: str,
+        node_name: str,
+        incoming: List[NodeRelationItem],
+        outgoing: List[NodeRelationItem],
+        evidences: List[NodeEvidenceItem],
+        citations: List[NodeCitationItem],
+        metadata: Dict[str, str | int | float | bool | None],
+    ) -> str:
+        total_relations = len(incoming) + len(outgoing)
+        top_outgoing = outgoing[0].type if outgoing else "none"
+        top_incoming = incoming[0].type if incoming else "none"
+        docs = sorted({e.document_id for e in evidences if e.document_id})
+        doc_hint = f"{len(docs)} document(s)" if docs else "no linked documents"
+        importance_score = total_relations + len(evidences) + (2 * len(citations))
+        priority = "high" if importance_score >= 10 else "medium" if importance_score >= 5 else "low"
+        existing_summary = str(metadata.get("summary") or metadata.get("description") or "").strip()
+        if existing_summary:
+            return (
+                f"{existing_summary} Node '{node_name}' ({node_type}) has {total_relations} relation(s), "
+                f"dominant outgoing '{top_outgoing}', dominant incoming '{top_incoming}', appears in {doc_hint}, "
+                f"and has {priority} explainability importance based on relation/evidence/citation density."
+            )
+        return (
+            f"Node '{node_name}' is a {node_type} with {total_relations} relation(s). "
+            f"Dominant outgoing relation is '{top_outgoing}' and dominant incoming relation is '{top_incoming}'. "
+            f"It appears in {doc_hint} and has {priority} explainability importance "
+            f"(evidence={len(evidences)}, citations={len(citations)})."
+        )
 
     @staticmethod
     def _element_id(entity: Any) -> str:

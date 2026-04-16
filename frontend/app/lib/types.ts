@@ -83,7 +83,7 @@ export interface NodeContext {
   documentName?: string;
   page?: number;
   rawText?: string;
-  details?: NodeDetail;
+  details?: NodeDetail | Record<string, unknown>;
 }
 
 export interface NodeRelationItem {
@@ -96,11 +96,20 @@ export interface NodeEvidenceItem {
   text: string;
   passage_id: string;
   document_id: string;
+  section?: string | null;
+  score?: number | null;
 }
 
 export interface NodeCitationItem {
   title: string;
-  year: number;
+  year?: number | null;
+  label?: string | null;
+}
+
+export interface NodeRelationGroup {
+  relation_type: string;
+  count: number;
+  items: NodeRelationItem[];
 }
 
 export interface NodeDetail {
@@ -111,6 +120,10 @@ export interface NodeDetail {
   relations: {
     incoming: NodeRelationItem[];
     outgoing: NodeRelationItem[];
+  };
+  grouped_relations: {
+    incoming: NodeRelationGroup[];
+    outgoing: NodeRelationGroup[];
   };
   evidences: NodeEvidenceItem[];
   citations: NodeCitationItem[];
@@ -145,6 +158,9 @@ export interface SemanticRelatedNode {
 export interface SemanticExplanation {
   why_these_entities: string[];
   why_this_evidence: string[];
+  reasoning_path: string[];
+  selected_sections: string[];
+  selection_signals: string[];
 }
 
 export interface SemanticQueryResponse {

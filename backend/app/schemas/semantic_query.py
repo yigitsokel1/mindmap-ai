@@ -50,6 +50,9 @@ class MatchedEntityItem(BaseModel):
 class QueryExplanation(BaseModel):
     why_these_entities: List[str] = Field(default_factory=list)
     why_this_evidence: List[str] = Field(default_factory=list)
+    reasoning_path: List[str] = Field(default_factory=list)
+    selected_sections: List[str] = Field(default_factory=list)
+    selection_signals: List[str] = Field(default_factory=list)
 
 
 class SemanticQueryAnswer(BaseModel):

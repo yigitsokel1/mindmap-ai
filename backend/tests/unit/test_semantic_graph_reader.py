@@ -1,6 +1,10 @@
 from backend.app.schemas.graph_response import GraphEdge
 from backend.app.services.query.semantic_graph_reader import SemanticGraphFilters, SemanticGraphReader
-from backend.app.schemas.node_detail import NodeCitationItem, NodeEvidenceItem, NodeRelationItem
+from backend.app.schemas.node_detail import (
+    NodeCitationItem,
+    NodeEvidenceItem,
+    NodeRelationItem,
+)
 
 
 class FakeNode:
@@ -118,6 +122,34 @@ def test_read_node_detail_shapes_contract(monkeypatch):
     assert detail.type == "Method"
     assert detail.name == "Transformer"
     assert detail.evidences[0].text == "evidence"
+    assert detail.grouped_relations.incoming[0].relation_type == "RELATED_TO"
+
+
+def test_group_relations_returns_counted_groups():
+    grouped = SemanticGraphReader._group_relations(
+        [
+            NodeRelationItem(id="a", type="USES", name="A"),
+            NodeRelationItem(id="b", type="USES", name="B"),
+            NodeRelationItem(id="c", type="IMPROVES", name="C"),
+        ]
+    )
+    assert grouped[0].relation_type == "USES"
+    assert grouped[0].count == 2
+    assert grouped[1].relation_type == "IMPROVES"
+
+
+def test_build_node_summary_mentions_importance():
+    summary = SemanticGraphReader._build_node_summary(
+        node_type="Method",
+        node_name="Transformer",
+        incoming=[NodeRelationItem(id="i1", type="SUPPORTED_BY", name="PaperA")],
+        outgoing=[NodeRelationItem(id="o1", type="USES", name="Attention")],
+        evidences=[NodeEvidenceItem(text="e1", passage_id="p1", document_id="doc-1")],
+        citations=[NodeCitationItem(title="Ref1", label="[1]")],
+        metadata={},
+    )
+    assert "Transformer" in summary
+    assert "importance" in summary
 
 
 def test_read_node_detail_returns_none_for_missing_node(monkeypatch):

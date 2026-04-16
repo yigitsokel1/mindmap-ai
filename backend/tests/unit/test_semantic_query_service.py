@@ -86,6 +86,8 @@ def test_semantic_query_service_builds_grounded_answer(monkeypatch):
     assert len(result.matched_entities) == 2
     assert result.explanation.why_these_entities
     assert result.explanation.why_this_evidence
+    assert result.explanation.reasoning_path
+    assert result.explanation.selection_signals
     assert len(result.citations) == 1
     assert result.confidence > 0
 

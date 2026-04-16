@@ -30,6 +30,17 @@ class NodeRelations(BaseModel):
     outgoing: list[NodeRelationItem]
 
 
+class NodeRelationGroup(BaseModel):
+    relation_type: str
+    count: int
+    items: list[NodeRelationItem]
+
+
+class NodeGroupedRelations(BaseModel):
+    incoming: list[NodeRelationGroup]
+    outgoing: list[NodeRelationGroup]
+
+
 class NodeDetail(BaseModel):
     id: str
     type: str
@@ -37,5 +48,6 @@ class NodeDetail(BaseModel):
     summary: str
     metadata: Dict[str, str | int | float | bool | None]
     relations: NodeRelations
+    grouped_relations: NodeGroupedRelations
     evidences: list[NodeEvidenceItem]
     citations: list[NodeCitationItem]

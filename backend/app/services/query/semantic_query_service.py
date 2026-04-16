@@ -351,24 +351,48 @@ class SemanticQueryService:
             )
             return f"Matched semantic nodes for '{question}', but no supporting evidence was found."
 
-        first = evidence[0]
+        top_evidence = SemanticQueryService._dedupe_evidence(evidence, limit=3)
+        first = top_evidence[0]
         first_node = related_nodes[0].display_name
-        target = related_nodes[1].display_name if len(related_nodes) > 1 else "related context"
-        if query_intent in {"PROBLEM", "RELATION_LOOKUP"}:
-            if first.snippet:
-                return f"Evidence supporting {first_node}: {first.snippet}"
-            return f"Evidence exists for {first_node} via relation {first.relation_type}."
-        if query_intent == "CITATION_BASIS":
-            cited = [item.citation_label for item in evidence if item.citation_label]
-            if cited:
-                unique = ", ".join(sorted(dict.fromkeys(cited))[:3])
-                return f"Relevant citations for {first_node}: {unique}."
-            return f"Reference evidence for {first_node} was found, but no citation labels were available."
+        concepts = ", ".join(node.display_name for node in related_nodes[:3])
+        rel_types = ", ".join(sorted({item.relation_type for item in top_evidence if item.relation_type}))
+        snippets = [item.snippet.strip() for item in top_evidence if item.snippet.strip()]
+        supported_fact = snippets[0] if snippets else ""
+        section_list = ", ".join(sorted({(item.section or "Unknown") for item in top_evidence})[:3])
+
+        if query_intent == "SUMMARY":
+            if supported_fact:
+                return f"{first_node} and related concepts ({concepts}) are grounded by evidence from sections {section_list}. Core evidence: {supported_fact}"
+            return f"{first_node} is grounded through relations ({rel_types}) with related concepts: {concepts}."
+
         if query_intent == "METHOD_USAGE":
-            return f"Method-related grounding: {first_node} is linked to {target} via {first.relation_type}."
-        if first.snippet:
-            return f"{first_node} is connected to {target} via {first.relation_type}. Evidence: {first.snippet}"
-        return f"{first_node} is connected to {target} via {first.relation_type}."
+            usage_target = related_nodes[1].display_name if len(related_nodes) > 1 else "its linked context"
+            if supported_fact:
+                return f"Method usage is evidenced as {first_node} connects to {usage_target} through {first.relation_type}. Evidence: {supported_fact}"
+            return f"Method usage grounding shows {first_node} linked to {usage_target} through {first.relation_type}."
+
+        if query_intent == "PROBLEM":
+            if supported_fact:
+                return f"The problem framing centers on {first_node}. Supporting passage: {supported_fact}"
+            return f"The problem framing is grounded around {first_node} with relation pattern {rel_types or first.relation_type}."
+
+        if query_intent == "CITATION_BASIS":
+            cited = [item.citation_label for item in top_evidence if item.citation_label]
+            unique = ", ".join(sorted(dict.fromkeys(cited))[:4])
+            if unique:
+                return f"This answer is based on citation-backed evidence for {first_node}: {unique}."
+            if supported_fact:
+                return f"Reference-grounded evidence for {first_node} was found: {supported_fact}"
+            return f"Reference evidence exists for {first_node}, but explicit citation labels were not available."
+
+        if query_intent == "RELATION_LOOKUP":
+            if supported_fact:
+                return f"Relation lookup shows {first_node} connected via {rel_types or first.relation_type}. Evidence: {supported_fact}"
+            return f"Relation lookup found {first_node} connected through {rel_types or first.relation_type}."
+
+        if supported_fact:
+            return f"{first_node} is grounded via {first.relation_type}. Evidence: {supported_fact}"
+        return f"{first_node} is connected through {first.relation_type}."
 
     @staticmethod
     def _estimate_confidence(candidate_count: int, evidence_count: int) -> float:
@@ -447,11 +471,58 @@ class SemanticQueryService:
         evidence_reasons = [
             f"Traversal strategy '{traversal_plan.strategy}' prioritized {', '.join(traversal_plan.relation_directions)} links."
         ]
+        top_evidence = self._dedupe_evidence(evidence, limit=5)
         if evidence:
             evidence_reasons.append(
                 f"Top evidence prioritized by entity mention, section weight, citation presence, confidence, and relation match."
             )
-        return QueryExplanation(why_these_entities=entity_reasons, why_this_evidence=evidence_reasons)
+        reasoning_path = [
+            f"question_intent:{interpreted.intent}",
+            f"candidate_entities:{len(candidate_nodes)}",
+            f"evidence_candidates:{len(evidence)}",
+            f"selected_top_evidence:{len(top_evidence)}",
+            f"strategy:{traversal_plan.strategy}",
+        ]
+        selected_sections = sorted(
+            {
+                (item.section or "Unknown")
+                for item in top_evidence
+                if (item.section or "Unknown").strip()
+            }
+        )
+        selection_signals = [
+            "entity_mention_match",
+            "intent_section_priority",
+            "citation_signal_weighted_by_intent",
+            "relation_type_alignment",
+            "confidence_weight",
+            "duplicate_passage_penalty",
+            "duplicate_document_penalty",
+            "diversity_bonus",
+        ]
+        return QueryExplanation(
+            why_these_entities=entity_reasons,
+            why_this_evidence=evidence_reasons,
+            reasoning_path=reasoning_path,
+            selected_sections=selected_sections,
+            selection_signals=selection_signals,
+        )
+
+    @staticmethod
+    def _dedupe_evidence(
+        evidence: Sequence[SemanticEvidenceItem], limit: int
+    ) -> List[SemanticEvidenceItem]:
+        deduped: List[SemanticEvidenceItem] = []
+        seen = set()
+        for item in evidence:
+            key = " ".join((item.snippet or "").strip().lower().split())
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(item)
+            if len(deduped) >= limit:
+                break
+        return deduped
 
     @staticmethod
     def _pick_section_name(section: Any) -> Optional[str]:

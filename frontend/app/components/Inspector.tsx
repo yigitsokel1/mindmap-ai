@@ -1,7 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, FileText } from "lucide-react";
+import { API_ENDPOINTS } from "../lib/constants";
+import type { NodeDetail } from "../lib/types";
 import { useAppStore } from "../store/useAppStore";
 
 export default function Inspector() {
@@ -13,7 +16,43 @@ export default function Inspector() {
     closePDFViewer,
     selectedNodeContext,
     setSelectedNodeContext,
+    selectedDocumentId,
   } = useAppStore();
+  const [nodeDetail, setNodeDetail] = useState<NodeDetail | null>(null);
+  const contextDetails = (selectedNodeContext?.details || {}) as Record<string, unknown>;
+
+  useEffect(() => {
+    const contextId = selectedNodeContext?.id;
+    if (!contextId || contextId.includes("|")) {
+      setNodeDetail(null);
+      return;
+    }
+    let cancelled = false;
+    const loadNodeDetail = async () => {
+      try {
+        const response = await fetch(API_ENDPOINTS.GRAPH_NODE_DETAIL(contextId, selectedDocumentId || undefined));
+        if (!response.ok) {
+          throw new Error("Node detail fetch failed");
+        }
+        const detail = (await response.json()) as NodeDetail;
+        if (!cancelled) {
+          setNodeDetail(detail);
+          setSelectedNodeContext({
+            ...selectedNodeContext,
+            details: detail,
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          setNodeDetail(null);
+        }
+      }
+    };
+    loadNodeDetail();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedNodeContext?.id, selectedDocumentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pdfUrlWithPage: string | undefined = pdfUrl
     ? (pdfPage ? `${pdfUrl}#page=${pdfPage}` : pdfUrl)
@@ -32,7 +71,7 @@ export default function Inspector() {
           {/* Header */}
           <div className="flex items-center justify-between p-4 border-b border-white/10">
             <div className="flex items-center gap-2 min-w-0 flex-1">
-              <FileText className="w-4 h-4 text-cyan-400 flex-shrink-0" />
+              <FileText className="w-4 h-4 text-cyan-400 shrink-0" />
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-mono font-semibold text-white/90 truncate">
                   {pdfDocName || "DOCUMENT"}
@@ -68,6 +107,11 @@ export default function Inspector() {
                   {selectedNodeContext.page ? ` · page ${selectedNodeContext.page}` : ""}
                 </p>
               )}
+              {(contextDetails.summary || nodeDetail?.summary) && (
+                <p className="text-[11px] text-white/80 font-mono mt-2 leading-relaxed">
+                  {String(contextDetails.summary || nodeDetail?.summary)}
+                </p>
+              )}
             </div>
           )}
 
@@ -90,9 +134,77 @@ export default function Inspector() {
                   </p>
                 )}
                 {selectedNodeContext.details && (
-                  <pre className="text-[10px] text-white/60 font-mono whitespace-pre-wrap break-words">
-                    {JSON.stringify(selectedNodeContext.details, null, 2)}
-                  </pre>
+                  <>
+                    {Array.isArray(
+                      (contextDetails.grouped_relations as { incoming?: unknown[] } | undefined)?.incoming
+                    ) && (
+                      <div className="mb-3">
+                        <p className="text-[10px] text-cyan-300 font-mono uppercase mb-1">Incoming Relations</p>
+                        {(
+                          contextDetails.grouped_relations as {
+                            incoming: Array<{ relation_type: string; count: number }>;
+                          }
+                        ).incoming.map(
+                          (group: { relation_type: string; count: number }) => (
+                            <p
+                              key={`incoming-${group.relation_type}`}
+                              className="text-[10px] text-white/70 font-mono"
+                            >
+                              {group.relation_type} ({group.count})
+                            </p>
+                          )
+                        )}
+                      </div>
+                    )}
+                    {Array.isArray(
+                      (contextDetails.grouped_relations as { outgoing?: unknown[] } | undefined)?.outgoing
+                    ) && (
+                      <div className="mb-3">
+                        <p className="text-[10px] text-cyan-300 font-mono uppercase mb-1">Outgoing Relations</p>
+                        {(
+                          contextDetails.grouped_relations as {
+                            outgoing: Array<{ relation_type: string; count: number }>;
+                          }
+                        ).outgoing.map(
+                          (group: { relation_type: string; count: number }) => (
+                            <p
+                              key={`outgoing-${group.relation_type}`}
+                              className="text-[10px] text-white/70 font-mono"
+                            >
+                              {group.relation_type} ({group.count})
+                            </p>
+                          )
+                        )}
+                      </div>
+                    )}
+                    {Array.isArray(contextDetails.evidences) && (
+                      <div className="mb-3">
+                        <p className="text-[10px] text-cyan-300 font-mono uppercase mb-1">Top Evidence Snippets</p>
+                        {(contextDetails.evidences as Array<{ text: string }>)
+                          .slice(0, 3)
+                          .map((item: { text: string }, idx: number) => (
+                            <p key={`evidence-${idx}`} className="text-[10px] text-white/70 font-mono mb-1">
+                              {item.text}
+                            </p>
+                          ))}
+                      </div>
+                    )}
+                    {Array.isArray(contextDetails.citations) && (
+                      <div className="mb-3">
+                        <p className="text-[10px] text-cyan-300 font-mono uppercase mb-1">Linked Citations</p>
+                        {(contextDetails.citations as Array<{ label?: string; title: string }>)
+                          .slice(0, 5)
+                          .map((item: { label?: string; title: string }, idx: number) => (
+                            <p key={`citation-${idx}`} className="text-[10px] text-white/70 font-mono">
+                              {item.label || item.title}
+                            </p>
+                          ))}
+                      </div>
+                    )}
+                    <pre className="text-[10px] text-white/60 font-mono whitespace-pre-wrap wrap-break-word">
+                      {JSON.stringify(contextDetails, null, 2)}
+                    </pre>
+                  </>
                 )}
               </div>
             ) : (

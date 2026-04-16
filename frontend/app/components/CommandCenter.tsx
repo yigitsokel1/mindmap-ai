@@ -124,6 +124,27 @@ export default function CommandCenter() {
     });
   };
 
+  const handleCitationClick = (citation: SemanticQueryResponse["citations"][number]) => {
+    const sourceDocument = citation.document_name ?? "Unknown document";
+    const docName = resolveDocumentDisplayName(citation.document_name ?? undefined, undefined, sourceDocument);
+    if (citation.document_name && citation.page) {
+      openPDFViewer(API_ENDPOINTS.STATIC(citation.document_name), citation.document_name, citation.page);
+    }
+    setSelectedNodeContext({
+      id: citation.reference_entry_id || citation.label,
+      label: "Citation",
+      title: citation.label,
+      documentName: docName,
+      page: citation.page || undefined,
+      rawText: `Reference: ${citation.label}`,
+      details: {
+        reference_entry_id: citation.reference_entry_id,
+        document_name: citation.document_name,
+        page: citation.page,
+      },
+    });
+  };
+
   const handlePresetChange = (preset: GraphPreset) => {
     setGraphPreset(preset);
   };
@@ -268,11 +289,44 @@ export default function CommandCenter() {
                 <div className="space-y-3">
                   <div className="bg-black/40 border-l-2 border-cyan-500 rounded px-3 py-2">
                     <p className="text-[10px] uppercase tracking-wide text-cyan-300 font-mono mb-1">
-                      Grounded Answer · confidence {semanticResult.confidence.toFixed(2)}
+                      Answer · confidence {semanticResult.confidence.toFixed(2)}
                     </p>
                     <p className="text-xs text-white/90 font-mono leading-relaxed">{semanticResult.answer}</p>
                   </div>
+                  <div className="bg-black/20 border border-white/10 rounded px-3 py-2">
+                    <p className="text-[10px] uppercase tracking-wide text-cyan-300 font-mono mb-2">
+                      Why This Answer
+                    </p>
+                    <ul className="space-y-1">
+                      {semanticResult.explanation.why_this_evidence.map((reason, idx) => (
+                        <li key={`why-evidence-${idx}`} className="text-[11px] text-white/80 font-mono">
+                          - {reason}
+                        </li>
+                      ))}
+                      {semanticResult.explanation.reasoning_path.map((step, idx) => (
+                        <li key={`reasoning-path-${idx}`} className="text-[10px] text-white/60 font-mono">
+                          - {step}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="bg-black/20 border border-white/10 rounded px-3 py-2">
+                    <p className="text-[10px] uppercase tracking-wide text-cyan-300 font-mono mb-2">
+                      Matched Entities
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {semanticResult.matched_entities.map((entity) => (
+                        <span
+                          key={entity.id}
+                          className="text-[10px] font-mono px-2 py-1 rounded border border-cyan-500/30 text-cyan-200 bg-cyan-500/5"
+                        >
+                          {entity.display_name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
                   <div className="space-y-2">
+                    <p className="text-[10px] uppercase tracking-wide text-purple-300 font-mono">Top Evidence</p>
                     {semanticResult.evidence.map((item, idx) => (
                       <button
                         key={`${item.related_node_ids.join("-")}-${idx}`}
@@ -297,6 +351,26 @@ export default function CommandCenter() {
                             item.document_id ?? "Unknown document"
                           )}
                           {item.page ? ` · page ${item.page}` : ""}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-[10px] uppercase tracking-wide text-purple-300 font-mono">Citations</p>
+                    {semanticResult.citations.map((citation, idx) => (
+                      <button
+                        key={`${citation.reference_entry_id || citation.label}-${idx}`}
+                        onClick={() => handleCitationClick(citation)}
+                        className="w-full text-left bg-black/30 border border-white/10 rounded px-3 py-2 hover:bg-white/5 transition-colors"
+                      >
+                        <p className="text-[10px] text-cyan-300 font-mono">{citation.label}</p>
+                        <p className="text-[10px] text-white/60 font-mono mt-1">
+                          {resolveDocumentDisplayName(
+                            citation.document_name ?? undefined,
+                            undefined,
+                            citation.document_name ?? "Unknown document"
+                          )}
+                          {citation.page ? ` · page ${citation.page}` : ""}
                         </p>
                       </button>
                     ))}
