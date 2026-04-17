@@ -1,3 +1,12 @@
+## Sprint 23 - Phase 1 Real Acceptance Pack
+
+- Run `poetry run python backend/tools/run_semantic_eval.py --profile acceptance_real`.
+- Verify all cases under `backend/evals/acceptance_real/cases.json` are executed.
+- Confirm citation/provenance matches `backend/evals/acceptance_real/expected_citations.json`.
+- Spot-check at least 2 cases manually in UI:
+  - answer text grounded in evidence snippets
+  - citation click leads to provenance context in inspector
+
 # Manual Acceptance Checklist
 
 This checklist is the product-level validation flow for each sprint closeout.

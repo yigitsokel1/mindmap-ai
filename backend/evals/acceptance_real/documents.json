@@ -1,0 +1,137 @@
+{
+  "documents": [
+    {
+      "id": "acc-transformer-2017",
+      "name": "attention_is_all_you_need.pdf",
+      "title": "Attention Is All You Need",
+      "source_url": "https://arxiv.org/abs/1706.03762",
+      "checksum_sha256": "sha256-placeholder-transformer-2017",
+      "entities": [
+        {
+          "id": "m-transformer",
+          "type": "Method",
+          "display_name": "Transformer",
+          "canonical_name": "Transformer",
+          "aliases": ["transformer architecture", "attention is all you need model"]
+        },
+        { "id": "c-self-attention", "type": "Concept", "display_name": "Self-Attention" },
+        { "id": "t-machine-translation", "type": "Task", "display_name": "Machine Translation" }
+      ],
+      "evidence": [
+        {
+          "entity_id": "m-transformer",
+          "relation_type": "USES",
+          "snippet": "The Transformer model relies entirely on attention mechanisms without recurrence.",
+          "section": "Methods",
+          "page": 4,
+          "citation_label": "[12]",
+          "reference_entry_id": "ref-vaswani-2017"
+        },
+        {
+          "entity_id": "c-self-attention",
+          "relation_type": "SUPPORTS",
+          "snippet": "Self-attention allows modeling long-range dependencies with parallelizable computation.",
+          "section": "Methods",
+          "page": 5
+        }
+      ]
+    },
+    {
+      "id": "acc-bert-2018",
+      "name": "bert_pretraining_of_deep_bidirectional_transformers.pdf",
+      "title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+      "source_url": "https://arxiv.org/abs/1810.04805",
+      "checksum_sha256": "sha256-placeholder-bert-2018",
+      "entities": [
+        { "id": "m-bert", "type": "Method", "display_name": "BERT" },
+        { "id": "t-nli", "type": "Task", "display_name": "Natural Language Inference" },
+        { "id": "t-qa", "type": "Task", "display_name": "Question Answering" }
+      ],
+      "evidence": [
+        {
+          "entity_id": "m-bert",
+          "relation_type": "IMPROVES",
+          "snippet": "BERT obtains new state-of-the-art results on eleven natural language processing tasks.",
+          "section": "Results",
+          "page": 1
+        },
+        {
+          "entity_id": "t-qa",
+          "relation_type": "EVALUATED_ON",
+          "snippet": "The model achieves strong gains on question answering benchmarks.",
+          "section": "Results",
+          "page": 7,
+          "citation_label": "[6]",
+          "reference_entry_id": "ref-devlin-2018"
+        }
+      ]
+    },
+    {
+      "id": "acc-gat-2018",
+      "name": "graph_attention_networks.pdf",
+      "title": "Graph Attention Networks",
+      "source_url": "https://arxiv.org/abs/1710.10903",
+      "checksum_sha256": "sha256-placeholder-gat-2018",
+      "entities": [
+        { "id": "m-gat", "type": "Method", "display_name": "Graph Attention Networks" },
+        { "id": "c-attention-coeff", "type": "Concept", "display_name": "Masked Self-Attention" },
+        { "id": "d-cora", "type": "Dataset", "display_name": "Cora" }
+      ],
+      "evidence": [
+        {
+          "entity_id": "m-gat",
+          "relation_type": "USES",
+          "snippet": "GAT introduces masked self-attentional layers to compute neighborhood features.",
+          "section": "Methods",
+          "page": 2
+        },
+        {
+          "entity_id": "d-cora",
+          "relation_type": "EVALUATED_ON",
+          "snippet": "The model is benchmarked on citation networks such as Cora.",
+          "section": "Experiments",
+          "page": 5,
+          "citation_label": "[3]",
+          "reference_entry_id": "ref-velickovic-2018"
+        }
+      ]
+    },
+    {
+      "id": "acc-rag-2020",
+      "name": "retrieval_augmented_generation_for_knowledge_intensive_nlp.pdf",
+      "title": "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks",
+      "source_url": "https://arxiv.org/abs/2005.11401",
+      "checksum_sha256": "sha256-placeholder-rag-2020",
+      "entities": [
+        {
+          "id": "m-rag",
+          "type": "Method",
+          "display_name": "Retrieval-Augmented Generation",
+          "canonical_name": "Retrieval-Augmented Generation",
+          "aliases": ["RAG"],
+          "acronym": "rag"
+        },
+        { "id": "m-dpr", "type": "Method", "display_name": "Dense Passage Retrieval" },
+        { "id": "t-open-domain-qa", "type": "Task", "display_name": "Open-domain QA" }
+      ],
+      "evidence": [
+        {
+          "entity_id": "m-rag",
+          "relation_type": "USES",
+          "snippet": "RAG combines parametric generation with a non-parametric memory over external documents.",
+          "section": "System",
+          "page": 3
+        },
+        {
+          "entity_id": "m-dpr",
+          "relation_type": "SUPPORTS",
+          "snippet": "Dense Passage Retrieval is used to retrieve relevant passages before generation.",
+          "section": "Retriever",
+          "page": 4,
+          "citation_label": "[8]",
+          "reference_entry_id": "ref-lewis-2020"
+        }
+      ]
+    }
+  ]
+}

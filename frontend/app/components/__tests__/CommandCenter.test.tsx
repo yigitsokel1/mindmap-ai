@@ -13,7 +13,7 @@ describe("CommandCenter", () => {
     });
   });
 
-  it("renders answer/key insights/clustered evidence/citations hierarchy after semantic query", async () => {
+  it("renders primary answer, insights, and collapsed evidence/citation sections", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
@@ -43,6 +43,9 @@ describe("CommandCenter", () => {
             selection_signals: ["citation_signal_weighted_by_intent"],
           },
           confidence: 0.82,
+          key_points: ["Point A", "Point B"],
+          insights: [{ type: "COMMON_PATTERN", text: "Stable pattern", confidence: 0.9, supporting_clusters: ["c-1"] }],
+          clusters: [{ cluster_key: "c-1", entity: "Transformer", relation_type: "USES", evidences: [], canonical_frequency: 2, citation_count: 1, importance: 0.8 }],
           mode: "semantic_grounded",
         }),
       })
@@ -56,9 +59,9 @@ describe("CommandCenter", () => {
 
     await waitFor(() => expect(screen.getByText(/Grounded answer/i)).toBeInTheDocument());
     expect(screen.getByText("Key Points")).toBeInTheDocument();
-    expect(screen.getByText("Insights")).toBeInTheDocument();
-    expect(screen.getByText("Evidence (Clustered)")).toBeInTheDocument();
-    expect(screen.getAllByText("Citations").length).toBeGreaterThan(0);
+    expect(screen.getByTestId("insights-heading")).toBeInTheDocument();
+    expect(screen.getByTestId("clustered-evidence-heading")).toBeInTheDocument();
+    expect(screen.getByText("Citations (collapsed)")).toBeInTheDocument();
     expect(screen.getByText("Advanced Reasoning Details")).toBeInTheDocument();
   });
 });

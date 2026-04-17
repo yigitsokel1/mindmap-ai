@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, FileText, Loader2, AlertTriangle } from "lucide-react";
 import { API_ENDPOINTS } from "../lib/constants";
+import { fetchJson, toUserMessage } from "../lib/api";
 import type { NodeDetail } from "../lib/types";
 import { useAppStore } from "../store/useAppStore";
 
@@ -30,6 +31,14 @@ export default function Inspector() {
     0,
     Number(contextDetails.canonical_alias_count || canonicalAliases.length) - aliasVisible.length
   );
+  const relationLoad =
+    ((contextDetails.grouped_relations as { incoming?: unknown[]; outgoing?: unknown[] } | undefined)?.incoming?.length || 0) +
+    ((contextDetails.grouped_relations as { incoming?: unknown[]; outgoing?: unknown[] } | undefined)?.outgoing?.length || 0);
+  const evidenceCount = Array.isArray(contextDetails.evidences) ? contextDetails.evidences.length : 0;
+  const citationCount = Array.isArray(contextDetails.citations) ? contextDetails.citations.length : 0;
+  const importanceScore = relationLoad + evidenceCount + citationCount * 2;
+  const importanceLevel = importanceScore >= 10 ? "High" : importanceScore >= 5 ? "Medium" : "Low";
+  const [expandedDetails, setExpandedDetails] = useState(false);
 
   useEffect(() => {
     const contextId = selectedNodeContext?.id;
@@ -43,18 +52,18 @@ export default function Inspector() {
       setIsLoadingNodeDetail(true);
       setNodeDetailError(null);
       try {
-        const response = await fetch(API_ENDPOINTS.GRAPH_NODE_DETAIL(contextId, scopedDocumentId));
-        if (!response.ok) {
-          throw new Error("Node detail fetch failed");
-        }
-        const detail = (await response.json()) as NodeDetail;
+        const detail = await fetchJson<NodeDetail>(
+          API_ENDPOINTS.GRAPH_NODE_DETAIL(contextId, scopedDocumentId),
+          undefined,
+          12000
+        );
         if (!cancelled) {
           setNodeDetail(detail);
         }
-      } catch {
+      } catch (error) {
         if (!cancelled) {
           setNodeDetail(null);
-          setNodeDetailError("Node detail could not be loaded.");
+          setNodeDetailError(toUserMessage(error));
         }
       } finally {
         if (!cancelled) {
@@ -129,6 +138,11 @@ export default function Inspector() {
                   {String(contextDetails.summary || nodeDetail?.summary)}
                 </p>
               )}
+              {selectedNodeContext.shortDescription && (
+                <p className="text-[11px] text-white/75 font-mono mt-2 leading-relaxed">
+                  {selectedNodeContext.shortDescription}
+                </p>
+              )}
             </div>
           )}
 
@@ -165,6 +179,28 @@ export default function Inspector() {
                 {Object.keys(contextDetails).length > 0 && (
                   <>
                     <div className="mb-3 border border-white/10 rounded px-3 py-2 bg-black/20">
+                      <p className="text-[10px] text-cyan-300 font-mono uppercase mb-1">Quick View</p>
+                      <p className="text-[10px] text-white/70 font-mono">Type: {selectedNodeContext.label}</p>
+                      <p className="text-[10px] text-white/70 font-mono">
+                        {selectedNodeContext.shortDescription || String(contextDetails.summary || "No short description available.")}
+                      </p>
+                      <button
+                        onClick={() => setExpandedDetails((prev) => !prev)}
+                        className="mt-2 text-[10px] px-2 py-1 rounded border border-white/20 text-white/80 hover:bg-white/10 font-mono"
+                      >
+                        {expandedDetails ? "Hide details" : "Expand details"}
+                      </button>
+                    </div>
+                    {evidenceCount === 0 && citationCount === 0 && (
+                      <div className="mb-3 border border-amber-500/40 rounded px-3 py-2 bg-amber-500/10">
+                        <p className="text-[10px] text-amber-200 font-mono">
+                          This node is structural and not useful for answering queries.
+                        </p>
+                      </div>
+                    )}
+                    {expandedDetails && (
+                      <>
+                    <div className="mb-3 border border-white/10 rounded px-3 py-2 bg-black/20">
                       <p className="text-[10px] text-cyan-300 font-mono uppercase mb-1" data-testid="inspector-summary-heading">
                         Summary
                       </p>
@@ -180,10 +216,10 @@ export default function Inspector() {
                         className="text-[10px] text-cyan-300 font-mono uppercase cursor-pointer"
                         data-testid="inspector-canonical-panel-heading"
                       >
-                        Canonical Panel
+                        Canonical Importance
                       </summary>
                       <p className="text-[10px] text-white/70 font-mono mt-1">
-                        Canonical view shows whether this node is part of a broader shared concept.
+                        Importance in graph: {importanceLevel} ({importanceScore} signal points)
                       </p>
                       {(contextDetails.linked_canonical_entity as Record<string, unknown> | undefined) ? (
                         <div className="mt-2">
@@ -201,16 +237,17 @@ export default function Inspector() {
                               Why linked: {String(contextDetails.canonical_link_reason)}
                             </p>
                           )}
-                          {typeof contextDetails.canonical_link_confidence === "number" && (
-                            <p className="text-[10px] text-white/70 font-mono">
-                              Link confidence: {(Number(contextDetails.canonical_link_confidence) * 100).toFixed(1)}%
-                            </p>
-                          )}
                         </div>
                       ) : (
                         <p className="text-[10px] text-white/50 font-mono mt-2">No canonical link is available.</p>
                       )}
                     </details>
+                    <div className="mb-3 border border-white/10 rounded px-3 py-2 bg-black/20">
+                      <p className="text-[10px] text-cyan-300 font-mono uppercase mb-1">Why this matters</p>
+                      <p className="text-[10px] text-white/75 font-mono">
+                        This node matters because it connects {relationLoad} relation groups, has {evidenceCount} evidence snippets, and {citationCount} citation links. Higher counts usually mean this concept is central to grounded answers.
+                      </p>
+                    </div>
                     <details className="mb-3 border border-white/10 rounded px-3 py-2 bg-black/20" open>
                       <summary
                         className="text-[10px] text-cyan-300 font-mono uppercase cursor-pointer"
@@ -330,6 +367,8 @@ export default function Inspector() {
                         {JSON.stringify(contextDetails, null, 2)}
                       </pre>
                     </details>
+                    </>
+                    )}
                   </>
                 )}
                 {Object.keys(contextDetails).length === 0 && !isLoadingNodeDetail && !nodeDetailError && (

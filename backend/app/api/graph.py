@@ -13,6 +13,16 @@ from backend.app.services.query.semantic_graph_reader import SemanticGraphFilter
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+def _classify_graph_error(exc: Exception) -> tuple[int, str]:
+    message = str(exc).lower()
+    if "not found" in message:
+        return (404, "Requested graph item was not found.")
+    if "invalid" in message or "validation" in message:
+        return (400, "Graph request validation failed.")
+    if "timeout" in message or "unavailable" in message or "neo4j" in message:
+        return (503, "Graph dependency is unavailable.")
+    return (500, "Error retrieving semantic graph.")
+
 
 def _normalize_node_types(node_types: Optional[List[str]]) -> List[str]:
     if not node_types:
@@ -59,9 +69,22 @@ def _build_semantic_graph(
             len(result.edges),
             time.perf_counter() - started_at,
         )
+        if document_id and len(result.nodes) == 0:
+            logger.warning(
+                "Graph fetch returned empty for document scope document_id=%s filters=%s",
+                document_id,
+                result.meta.filters_applied,
+            )
+        if len(result.nodes) > 0 and len(result.edges) == 0:
+            logger.warning(
+                "Graph fetch returned nodes_without_edges document_id=%s node_count=%d",
+                document_id,
+                len(result.nodes),
+            )
         return result
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Error retrieving semantic graph: {exc}") from exc
+        status_code, detail = _classify_graph_error(exc)
+        raise HTTPException(status_code=status_code, detail=detail) from exc
 
 
 @router.get("/graph/semantic", response_model=GraphResponse)
@@ -86,12 +109,24 @@ async def get_semantic_graph(
 async def get_node_detail(node_id: str, document_id: Optional[str] = None) -> NodeDetail:
     """Return explainable inspector detail for a specific semantic node."""
     try:
+        started_at = time.perf_counter()
         reader = SemanticGraphReader()
         detail = reader.read_node_detail(node_id=node_id, document_id=document_id)
         if detail is None:
             raise HTTPException(status_code=404, detail="Node not found")
+        logger.info(
+            "Node detail success node_id=%s document_id=%s incoming=%d outgoing=%d evidences=%d citations=%d elapsed=%.3fs",
+            node_id,
+            document_id,
+            len(detail.grouped_relations.incoming),
+            len(detail.grouped_relations.outgoing),
+            len(detail.evidences),
+            len(detail.citations),
+            time.perf_counter() - started_at,
+        )
         return detail
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Error retrieving node detail: {exc}") from exc
+        status_code, detail = _classify_graph_error(exc)
+        raise HTTPException(status_code=status_code, detail=detail) from exc

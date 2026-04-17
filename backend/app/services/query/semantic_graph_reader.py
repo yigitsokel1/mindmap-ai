@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 from typing import Any, Dict, Iterable, List, Optional, Set
 
 from backend.app.core.db import Neo4jDatabase
@@ -52,9 +53,19 @@ class SemanticGraphReader:
         self.db = Neo4jDatabase()
         if not self.db.driver:
             self.db.connect()
+        self.logger = logging.getLogger(__name__)
 
     def read_graph(self, filters: SemanticGraphFilters, limit: int = 2500) -> GraphResponse:
         included_labels = self._resolve_labels(filters)
+        self.logger.info(
+            "graph_reader.start document_id=%s node_types=%s effective_labels=%s include_structural=%s include_evidence=%s include_citations=%s",
+            filters.document_id,
+            filters.node_types,
+            sorted(included_labels),
+            filters.include_structural,
+            filters.include_evidence,
+            filters.include_citations,
+        )
         records = self._load_nodes(included_labels, filters.document_id, limit)
         node_by_id: Dict[str, GraphNode] = {}
         node_ids: List[str] = []
@@ -70,6 +81,14 @@ class SemanticGraphReader:
             node_ids.append(node_id)
 
         edges = self._load_edges(node_ids)
+        if node_ids and not edges:
+            self.logger.warning(
+                "graph_reader.suspicious nodes_present_without_edges document_id=%s node_count=%d",
+                filters.document_id,
+                len(node_ids),
+            )
+        if filters.document_id and not node_ids:
+            self.logger.warning("graph_reader.empty_for_document_scope document_id=%s", filters.document_id)
         return GraphResponse(
             nodes=list(node_by_id.values()),
             edges=edges,
@@ -300,6 +319,13 @@ class SemanticGraphReader:
             query,
             {"labels": list(labels), "document_id": document_id, "limit": limit},
         )
+        self.logger.info(
+            "graph_reader.nodes_loaded document_id=%s labels=%d count=%d limit=%d",
+            document_id,
+            len(list(labels)),
+            len(records),
+            limit,
+        )
         return records
 
     def _load_node_by_id(self, node_id: str) -> Optional[Dict[str, Any]]:
@@ -362,18 +388,22 @@ class SemanticGraphReader:
         self, node_id: str, direction: str, document_id: Optional[str], limit: int = 10
     ) -> List[NodeRelationItem]:
         if direction == "incoming":
-            pattern = "(other)-[:OUT_REL]->(ri:RelationInstance)-[:TO]->(n)"
+            pattern = "(other)-[rel]->(n)"
         else:
-            pattern = "(n)-[:OUT_REL]->(ri:RelationInstance)-[:TO]->(other)"
+            pattern = "(n)-[rel]->(other)"
         query = f"""
         MATCH (n)
         WHERE elementId(n) = $node_id
         MATCH {pattern}
-        OPTIONAL MATCH (ev:Evidence)-[:SUPPORTS]->(ri)-[:TO]->(other)
-        OPTIONAL MATCH (ev)-[:FROM_PASSAGE]->(p:Passage)
-        OPTIONAL MATCH (d:Document)-[:HAS_SECTION]->(:Section)-[:HAS_PASSAGE]->(p)
-        WHERE $document_id IS NULL OR d.uid = $document_id
-        RETURN DISTINCT other, ri
+        WHERE elementId(other) <> $node_id
+          AND (
+            $document_id IS NULL
+            OR EXISTS {{
+              MATCH (other)-[*1..4]-(d:Document)
+              WHERE d.uid = $document_id
+            }}
+          )
+        RETURN DISTINCT other, rel
         LIMIT $limit
         """
         records, _, _ = self.db.driver.execute_query(  # type: ignore[union-attr]
@@ -383,10 +413,10 @@ class SemanticGraphReader:
         relations: List[NodeRelationItem] = []
         for record in records:
             other = record.get("other")
-            relation_instance = record.get("ri")
+            rel = record.get("rel")
             if other is None:
                 continue
-            rel_type = relation_instance.get("type") if relation_instance else "RELATED_TO"
+            rel_type = getattr(rel, "type", None) or "RELATED_TO"
             relations.append(
                 NodeRelationItem(
                     id=self._element_id(other),
@@ -398,13 +428,38 @@ class SemanticGraphReader:
 
     def _load_node_evidences(self, node_id: str, document_id: Optional[str], limit: int = 8) -> List[NodeEvidenceItem]:
         query = """
-        MATCH (n)-[:OUT_REL]->(ri:RelationInstance)
+        MATCH (n)
         WHERE elementId(n) = $node_id
+        CALL () {
+          WITH $node_id AS node_id
+          MATCH (src)
+          WHERE elementId(src) = node_id
+          MATCH (src)-[:OUT_REL]->(ri:RelationInstance)
+          RETURN ri
+          UNION
+          WITH $node_id AS node_id
+          MATCH (dst)
+          WHERE elementId(dst) = node_id
+          MATCH (ri:RelationInstance)-[:TO]->(dst)
+          RETURN ri
+          UNION
+          WITH $node_id AS node_id
+          MATCH (ri:RelationInstance)
+          WHERE elementId(ri) = node_id
+          RETURN ri
+        }
         OPTIONAL MATCH (ev:Evidence)-[:SUPPORTS]->(ri)
         OPTIONAL MATCH (ev)-[:FROM_PASSAGE]->(p:Passage)
         OPTIONAL MATCH (sec:Section)-[:HAS_PASSAGE]->(p)
-        OPTIONAL MATCH (d:Document)-[:HAS_SECTION]->(:Section)-[:HAS_PASSAGE]->(p)
-        WHERE $document_id IS NULL OR d.uid = $document_id
+        OPTIONAL MATCH (d:Document)
+        WHERE (
+          EXISTS { MATCH (d)-[:HAS_PASSAGE]->(p) }
+          OR EXISTS { MATCH (d)-[:HAS_SECTION]->(:Section)-[:HAS_PASSAGE]->(p) }
+        )
+          AND ($document_id IS NULL OR d.uid = $document_id)
+        WITH ev, p, d, sec
+        WHERE (ev IS NOT NULL OR p IS NOT NULL)
+          AND ($document_id IS NULL OR d IS NOT NULL)
         RETURN DISTINCT ev, p, d, sec
         LIMIT $limit
         """
@@ -438,14 +493,38 @@ class SemanticGraphReader:
 
     def _load_node_citations(self, node_id: str, document_id: Optional[str], limit: int = 8) -> List[NodeCitationItem]:
         query = """
-        MATCH (n)-[:OUT_REL]->(ri:RelationInstance)
+        MATCH (n)
         WHERE elementId(n) = $node_id
+        CALL () {
+          WITH $node_id AS node_id
+          MATCH (src)
+          WHERE elementId(src) = node_id
+          MATCH (src)-[:OUT_REL]->(ri:RelationInstance)
+          RETURN ri
+          UNION
+          WITH $node_id AS node_id
+          MATCH (dst)
+          WHERE elementId(dst) = node_id
+          MATCH (ri:RelationInstance)-[:TO]->(dst)
+          RETURN ri
+          UNION
+          WITH $node_id AS node_id
+          MATCH (ri:RelationInstance)
+          WHERE elementId(ri) = node_id
+          RETURN ri
+        }
         MATCH (ev:Evidence)-[:SUPPORTS]->(ri)
         MATCH (ev)-[:FROM_PASSAGE]->(p:Passage)
         OPTIONAL MATCH (p)-[:HAS_INLINE_CITATION]->(ic:InlineCitation)
         OPTIONAL MATCH (ic)-[:REFERS_TO]->(ref:ReferenceEntry)
-        OPTIONAL MATCH (d:Document)-[:HAS_SECTION]->(:Section)-[:HAS_PASSAGE]->(p)
-        WHERE $document_id IS NULL OR d.uid = $document_id
+        OPTIONAL MATCH (d:Document)
+        WHERE (
+          EXISTS { MATCH (d)-[:HAS_PASSAGE]->(p) }
+          OR EXISTS { MATCH (d)-[:HAS_SECTION]->(:Section)-[:HAS_PASSAGE]->(p) }
+        )
+          AND ($document_id IS NULL OR d.uid = $document_id)
+        WITH ic, ref, d
+        WHERE $document_id IS NULL OR d IS NOT NULL
         RETURN DISTINCT ic, ref
         LIMIT $limit
         """
@@ -487,10 +566,10 @@ class SemanticGraphReader:
         node_type = labels[0] if labels else "Node"
         props = dict(node.items())
         display_name = (
-            props.get("display_name")
-            or props.get("canonical_name")
-            or props.get("name")
+            props.get("name")
             or props.get("title")
+            or props.get("display_name")
+            or props.get("canonical_name")
             or props.get("id")
             or self._element_id(node)
         )
@@ -505,10 +584,10 @@ class SemanticGraphReader:
     def _display_name(self, node: Any) -> str:
         props = dict(node.items())
         display_name = (
-            props.get("display_name")
-            or props.get("canonical_name")
-            or props.get("name")
+            props.get("name")
             or props.get("title")
+            or props.get("display_name")
+            or props.get("canonical_name")
             or props.get("id")
             or self._element_id(node)
         )

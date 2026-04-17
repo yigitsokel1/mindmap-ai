@@ -93,6 +93,33 @@ OPENAI_API_KEY=sk-your_openai_api_key
 
 uvicorn backend.app.main:app --reload
 
+## Launch Readiness Quick Path (Sprint 23)
+
+Single clear local flow (script-first):
+
+1. Start Neo4j and confirm `.env` values.
+2. Start backend:
+   - `poetry run uvicorn backend.app.main:app --reload`
+3. Start frontend:
+   - `cd frontend`
+   - `npm install`
+   - `npm run dev`
+4. Seed deterministic smoke graph:
+   - `poetry run python backend/tools/seed_smoke_graph.py`
+5. Run smoke:
+   - `cd frontend`
+   - `npm run test:smoke`
+6. Run evals:
+   - `poetry run python backend/tools/run_semantic_eval.py`
+   - `poetry run python backend/tools/run_semantic_eval.py --profile acceptance_real`
+7. Measure baseline:
+   - `poetry run python backend/tools/measure_baseline.py --document-id doc-transformer`
+
+Optional helper scripts:
+
+- `scripts/dev-up.ps1` (seed + startup guidance)
+- `scripts/dev-check.ps1` (tests + eval + smoke + baseline)
+
 ## ⚡ API Usage
 
 ### Current Runtime Status

@@ -13,6 +13,7 @@ class SemanticQueryRequest(BaseModel):
     node_types: List[str] = Field(default_factory=list)
     max_evidence: int = Field(default=5, ge=1, le=20)
     include_citations: bool = True
+    answer_mode: Literal["answer", "explore"] = "answer"
 
 
 class SemanticEvidenceItem(BaseModel):
@@ -94,7 +95,10 @@ class SemanticQueryAnswer(BaseModel):
     insights: List[InsightItem] = Field(default_factory=list)
     clusters: List[EvidenceClusterItem] = Field(default_factory=list)
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    confidence_badge: Literal["GROUNDED", "WEAK_GROUNDING", "NO_GROUNDING"] = "NO_GROUNDING"
     limited_evidence: bool = False
     uncertainty_signal: bool = False
     uncertainty_reason: Optional[str] = None
+    no_answer_reasons: List[str] = Field(default_factory=list)
+    closest_concepts: List[str] = Field(default_factory=list)
     mode: Literal["semantic_grounded"] = "semantic_grounded"

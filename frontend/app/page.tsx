@@ -18,7 +18,7 @@ export default function Home() {
   const isPDFViewerOpen = useAppStore((state) => state.isPDFViewerOpen);
   const selectedNodeContext = useAppStore((state) => state.selectedNodeContext);
   const isGraphFocused = useAppStore((state) => state.isGraphFocused);
-  const shouldRenderGraph = isPDFViewerOpen || !!selectedNodeContext;
+  const shouldRenderGraph = true;
   
   // Memoize blur classes to prevent re-renders
   const graphBlurClass = useMemo(() => {
@@ -34,6 +34,16 @@ export default function Home() {
         className={`fixed inset-0 z-0 w-screen h-screen transition-all duration-500 ${graphBlurClass}`}
       >
         {shouldRenderGraph ? <SemanticGraphViewer /> : null}
+        {!shouldRenderGraph && (
+          <div className="w-full h-full flex items-center justify-center">
+            <div className="max-w-xl text-center px-6">
+              <p className="text-sm text-cyan-300/90 font-mono">MindMap-AI</p>
+              <p className="mt-2 text-xs text-white/80 font-mono">
+                Upload a research PDF, then ask grounded questions to get answers, evidence clusters, and citation trails.
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Spatial HUD Panels (Z-10+) */}

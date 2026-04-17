@@ -66,6 +66,15 @@ def test_graph_semantic_endpoint_node_types_repeated_parsing(api_client, monkeyp
     assert FakeGraphReader.last_filters.node_types == ["Method", "Concept"]
 
 
+def test_graph_semantic_endpoint_document_filter_passthrough(api_client, monkeypatch):
+    import backend.app.api.graph as graph_api
+
+    monkeypatch.setattr(graph_api, "SemanticGraphReader", FakeGraphReader)
+    response = api_client.get("/api/graph/semantic?document_id=doc-42")
+    assert response.status_code == 200
+    assert FakeGraphReader.last_filters.document_id == "doc-42"
+
+
 def test_graph_node_detail_endpoint_contract(api_client, monkeypatch):
     import backend.app.api.graph as graph_api
 

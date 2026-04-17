@@ -206,6 +206,48 @@
       "expected_cross_document_hit": false,
       "case_type": "sparse_evidence",
       "expected_insight_presence": false
+    },
+    {
+      "id": "should-not-answer-yolo",
+      "document_id": "doc-transformer",
+      "question": "What does YOLO prove in these documents?",
+      "expected_intent": "SUMMARY",
+      "expected_entities": [],
+      "expected_sections": [],
+      "expected_citation_presence": false,
+      "expected_keywords": ["yolo"],
+      "expected_cross_document_hit": false,
+      "case_type": "should_not_answer",
+      "expected_insight_presence": false,
+      "should_not_answer": true
+    },
+    {
+      "id": "should-not-answer-gan",
+      "document_id": "doc-rag",
+      "question": "Explain GAN architecture evidence in this collection.",
+      "expected_intent": "SUMMARY",
+      "expected_entities": [],
+      "expected_sections": [],
+      "expected_citation_presence": false,
+      "expected_keywords": ["gan"],
+      "expected_cross_document_hit": false,
+      "case_type": "should_not_answer",
+      "expected_insight_presence": false,
+      "should_not_answer": true
+    },
+    {
+      "id": "should-not-answer-random",
+      "document_id": "doc-gnn",
+      "question": "zxqv random query without grounding",
+      "expected_intent": "SUMMARY",
+      "expected_entities": [],
+      "expected_sections": [],
+      "expected_citation_presence": false,
+      "expected_keywords": ["zxqv"],
+      "expected_cross_document_hit": false,
+      "case_type": "should_not_answer",
+      "expected_insight_presence": false,
+      "should_not_answer": true
     }
   ]
 }

@@ -31,6 +31,10 @@ logger = logging.getLogger(__name__)
 class SemanticQueryServiceError(RuntimeError):
     """Raised when semantic query execution fails internally."""
 
+    def __init__(self, message: str, category: str = "internal_error") -> None:
+        super().__init__(message)
+        self.category = category
+
 
 class SemanticQueryService:
     """Answers semantic questions using graph evidence only."""
@@ -68,6 +72,13 @@ class SemanticQueryService:
                 document_id=request.document_id,
                 node_types=request.node_types,
             )
+            if not candidate_entities:
+                return self._build_abstain_response(
+                    request=request,
+                    interpreted=interpreted,
+                    reasons=[f'No direct match for "{request.question}".', "No supporting passages found."],
+                    closest_concepts=[],
+                )
             traversal_plan = self.decide_traversal_scope(request, interpreted)
             evidence = self.traversal_executor.execute(
                 reader=self.reader,
@@ -92,13 +103,32 @@ class SemanticQueryService:
             key_points = self.answer_composer.compose_key_points(interpreted.intent, clusters, insights)
             citations = self._collect_citations(ranked_evidence, request.include_citations)
             related_nodes = self.candidate_selector.to_related_nodes(candidate_entities)
+            closest_concepts = [candidate.name for candidate in candidate_entities[:3]]
+            if len(ranked_evidence) == 0 and request.answer_mode == "answer":
+                reasons = [
+                    f'No direct match for "{request.question}".' if not candidate_entities else "No supporting passages found.",
+                    "No supporting passages found.",
+                ]
+                return self._build_abstain_response(
+                    request=request,
+                    interpreted=interpreted,
+                    reasons=reasons,
+                    closest_concepts=closest_concepts,
+                    matched_entities=self.candidate_selector.to_matched_entities(candidate_entities),
+                    related_nodes=related_nodes,
+                    citations=citations,
+                )
             answer_text = self.answer_composer.compose(
                 question=request.question,
                 query_intent=interpreted.intent,
                 evidence=ranked_evidence,
                 candidates=candidate_entities,
             )
-            confidence = self._estimate_confidence(len(candidate_entities), len(ranked_evidence))
+            confidence, confidence_badge = self._estimate_grounded_confidence(
+                evidence_count=len(ranked_evidence),
+                citation_count=len(citations),
+                cluster_importance=[cluster.importance for cluster in clusters],
+            )
             answer_text, limited_evidence, uncertainty_signal, uncertainty_reason = self.answer_composer.apply_guardrails(
                 answer_text=answer_text,
                 query_intent=interpreted.intent,
@@ -135,13 +165,26 @@ class SemanticQueryService:
                 insights=insights,
                 clusters=clusters,
                 confidence=confidence,
+                confidence_badge=confidence_badge,
                 limited_evidence=limited_evidence,
                 uncertainty_signal=uncertainty_signal,
                 uncertainty_reason=uncertainty_reason,
+                no_answer_reasons=[],
+                closest_concepts=closest_concepts,
             )
+        except ValueError as exc:
+            logger.error("Semantic query validation failed: %s", exc, exc_info=True)
+            raise SemanticQueryServiceError(str(exc), category="validation_error") from exc
         except Exception as exc:
             logger.error("Semantic query execution failed: %s", exc, exc_info=True)
-            raise SemanticQueryServiceError(str(exc)) from exc
+            message = str(exc).lower()
+            if "not found" in message:
+                category = "not_found"
+            elif "timeout" in message:
+                category = "dependency_error"
+            else:
+                category = "dependency_error"
+            raise SemanticQueryServiceError(str(exc), category=category) from exc
 
     def interpret_question(self, request: SemanticQueryRequest) -> InterpretedQuestion:
         return self.interpreter.interpret(request.question, request.document_id)
@@ -189,9 +232,57 @@ class SemanticQueryService:
 
 
     @staticmethod
-    def _estimate_confidence(candidate_count: int, evidence_count: int) -> float:
-        if candidate_count == 0 or evidence_count == 0:
-            return 0.0
-        raw = min(1.0, 0.25 + (0.1 * min(candidate_count, 4)) + (0.12 * min(evidence_count, 4)))
-        return round(raw, 2)
+    def _estimate_grounded_confidence(
+        evidence_count: int,
+        citation_count: int,
+        cluster_importance: Sequence[float],
+    ) -> tuple[float, str]:
+        if evidence_count == 0:
+            return 0.0, "NO_GROUNDING"
+        avg_cluster = (sum(cluster_importance) / len(cluster_importance)) if cluster_importance else 0.0
+        citation_factor = min(1.0, citation_count / max(1, evidence_count))
+        evidence_factor = min(1.0, evidence_count / 5)
+        score = round(min(1.0, (0.45 * evidence_factor) + (0.35 * avg_cluster) + (0.20 * citation_factor)), 2)
+        if score >= 0.65:
+            return score, "GROUNDED"
+        if score >= 0.3:
+            return score, "WEAK_GROUNDING"
+        return score, "NO_GROUNDING"
+
+    def _build_abstain_response(
+        self,
+        request: SemanticQueryRequest,
+        interpreted: InterpretedQuestion,
+        reasons: List[str],
+        closest_concepts: List[str],
+        matched_entities: Sequence = (),
+        related_nodes: Sequence = (),
+        citations: Sequence = (),
+    ) -> SemanticQueryAnswer:
+        explanation = self.explanation_builder.build(
+            interpreted=interpreted,
+            candidates=[],
+            evidence=[],
+            traversal_plan=self.decide_traversal_scope(request, interpreted),
+        )
+        explanation.reasoning_path.append("hard_gate:no_grounded_answer")
+        return SemanticQueryAnswer(
+            answer="No grounded answer found in the current documents.",
+            query_intent=interpreted.intent,
+            matched_entities=list(matched_entities),
+            evidence=[],
+            related_nodes=list(related_nodes),
+            citations=list(citations),
+            explanation=explanation,
+            key_points=[],
+            insights=[],
+            clusters=[],
+            confidence=0.0,
+            confidence_badge="NO_GROUNDING",
+            limited_evidence=True,
+            uncertainty_signal=True,
+            uncertainty_reason="no_evidence_hard_gate",
+            no_answer_reasons=reasons,
+            closest_concepts=closest_concepts,
+        )
 

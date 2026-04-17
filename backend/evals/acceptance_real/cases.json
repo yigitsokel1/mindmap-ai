@@ -1,0 +1,78 @@
+{
+  "cases": [
+    {
+      "id": "acc-transformer-method-grounding",
+      "document_id": "acc-transformer-2017",
+      "question": "How is the Transformer method grounded in this paper?",
+      "expected_intent": "METHOD_USAGE",
+      "expected_entities": ["Transformer", "Self-Attention"],
+      "expected_sections": ["Methods"],
+      "expected_citation_presence": true,
+      "expected_keywords": ["attention", "transformer", "method"],
+      "expected_cross_document_hit": false,
+      "expected_insight_presence": true
+    },
+    {
+      "id": "acc-bert-results-summary",
+      "document_id": "acc-bert-2018",
+      "question": "What does BERT improve according to the paper results?",
+      "expected_intent": "SUMMARY",
+      "expected_entities": ["BERT", "Question Answering"],
+      "expected_sections": ["Results"],
+      "expected_citation_presence": true,
+      "expected_keywords": ["state-of-the-art", "results", "question answering"],
+      "expected_cross_document_hit": false,
+      "expected_insight_presence": false
+    },
+    {
+      "id": "acc-gat-dataset-support",
+      "document_id": "acc-gat-2018",
+      "question": "Which dataset evidence supports the GAT evaluation?",
+      "expected_intent": "CITATION_BASIS",
+      "expected_entities": ["Graph Attention Networks", "Cora"],
+      "expected_sections": ["Experiments"],
+      "expected_citation_presence": true,
+      "expected_keywords": ["dataset", "cora", "evaluation"],
+      "expected_cross_document_hit": false,
+      "expected_insight_presence": false
+    },
+    {
+      "id": "acc-rag-retriever-mechanism",
+      "document_id": "acc-rag-2020",
+      "question": "How does RAG use retrieval in its generation pipeline?",
+      "expected_intent": "METHOD_USAGE",
+      "expected_entities": ["Retrieval-Augmented Generation", "Dense Passage Retrieval"],
+      "expected_sections": ["System", "Retriever"],
+      "expected_citation_presence": true,
+      "expected_keywords": ["retrieval", "generation", "passages"],
+      "expected_cross_document_hit": false,
+      "expected_insight_presence": true
+    },
+    {
+      "id": "acc-rag-citation-provenance",
+      "document_id": "acc-rag-2020",
+      "question": "What citation supports the retriever component in RAG?",
+      "expected_intent": "CITATION_BASIS",
+      "expected_entities": ["Dense Passage Retrieval"],
+      "expected_sections": ["Retriever"],
+      "expected_citation_presence": true,
+      "expected_keywords": ["citation", "retriever", "dense passage retrieval"],
+      "expected_cross_document_hit": false,
+      "expected_insight_presence": false
+    },
+    {
+      "id": "acc-should-not-answer-yolo",
+      "document_id": "acc-transformer-2017",
+      "question": "What is YOLO evidence in this document set?",
+      "expected_intent": "SUMMARY",
+      "expected_entities": [],
+      "expected_sections": [],
+      "expected_citation_presence": false,
+      "expected_keywords": ["yolo"],
+      "expected_cross_document_hit": false,
+      "expected_insight_presence": false,
+      "case_type": "should_not_answer",
+      "should_not_answer": true
+    }
+  ]
+}

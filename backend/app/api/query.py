@@ -14,6 +14,13 @@ from backend.app.services.query.semantic_query_service import (
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+ERROR_TO_STATUS = {
+    "validation_error": (400, "Request validation failed."),
+    "dependency_error": (503, "A required backend dependency is currently unavailable."),
+    "not_found": (404, "Requested semantic resources were not found."),
+    "partial_data": (206, "Query completed with partial data."),
+}
+
 
 @router.post("/query/semantic", response_model=SemanticQueryAnswer)
 async def semantic_query(request: SemanticQueryRequest) -> SemanticQueryAnswer:
@@ -48,10 +55,8 @@ async def semantic_query(request: SemanticQueryRequest) -> SemanticQueryAnswer:
             exc,
             exc_info=True,
         )
-        raise HTTPException(
-            status_code=500,
-            detail="Semantic query processing failed. Please try again.",
-        ) from exc
+        status_code, detail = ERROR_TO_STATUS.get(exc.category, (500, "Semantic query processing failed. Please try again."))
+        raise HTTPException(status_code=status_code, detail=detail) from exc
     except Exception as exc:
         logger.error("Unexpected semantic query failure: %s", exc, exc_info=True)
         raise HTTPException(

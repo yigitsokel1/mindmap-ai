@@ -53,6 +53,9 @@ class CandidateSelector:
         )
         if local:
             return local
+        # Avoid noisy fallback for weak or out-of-domain tokenization.
+        if len(tokens) <= 1:
+            return []
         return self.reader.find_fallback_entities(
             document_id=document_id,
             node_types=node_types,

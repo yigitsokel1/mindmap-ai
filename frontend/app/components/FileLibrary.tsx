@@ -5,7 +5,7 @@ import { FileText, Upload, Loader2 } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
 import { API_ENDPOINTS } from "../lib/constants";
 import { resolveDocumentDisplayName } from "../lib/documentLabel";
-import { fetchSemanticGraph, getPresetFilters } from "../lib/api";
+import { fetchJson, fetchSemanticGraph, getPresetFilters, toUserMessage } from "../lib/api";
 import type { Document, GraphNode, IngestJobStatus } from "../lib/types";
 
 const INGEST_STAGE_LABELS: Record<IngestJobStatus["stage"], string> = {
@@ -192,7 +192,7 @@ export default function FileLibrary() {
       xhr.send(formData);
     } catch (error) {
       console.error("Upload error:", error);
-      setUploadError(error instanceof Error ? error.message : "Upload failed.");
+      setUploadError(toUserMessage(error));
       setIsUploading(false);
       setIsServerProcessing(false);
       setUploadProgress(0);
@@ -203,12 +203,7 @@ export default function FileLibrary() {
   const pollIngestJob = async (jobId: string) => {
     let lastStageOrder = INGEST_STAGE_ORDER.uploaded;
     for (let attempt = 0; attempt < 120; attempt += 1) {
-      const response = await fetch(API_ENDPOINTS.INGEST_STATUS(jobId));
-      if (!response.ok) {
-        throw new Error(`Failed to fetch ingest status: ${response.statusText}`);
-      }
-
-      const status = (await response.json()) as IngestJobStatus;
+      const status = await fetchJson<IngestJobStatus>(API_ENDPOINTS.INGEST_STATUS(jobId), undefined, 12000);
       const currentOrder = INGEST_STAGE_ORDER[status.stage];
       if (currentOrder >= lastStageOrder) {
         const subphase = typeof status.details?.subphase === "string" ? status.details.subphase : undefined;
@@ -255,8 +250,11 @@ export default function FileLibrary() {
             <p className="text-xs text-white/50 font-mono">LOADING...</p>
           </div>
         ) : documents.length === 0 ? (
-          <div className="text-center py-8">
-            <p className="text-xs text-white/50 font-mono">NO DOCUMENTS</p>
+          <div className="text-center py-8 space-y-2">
+            <p className="text-xs text-white/70 font-mono">No documents yet</p>
+            <p className="text-[10px] text-white/50 font-mono">
+              Upload a PDF to build the graph, then ask evidence-backed questions from the Query tab.
+            </p>
           </div>
         ) : (
           documents.map((doc) => (

@@ -2,13 +2,14 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Loader2, MessageSquare, FolderOpen, X, Lightbulb, Network } from "lucide-react";
+import { Send, Loader2, MessageSquare, FolderOpen, X, Lightbulb, Network, AlertTriangle } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
 import FileLibrary from "./FileLibrary";
-import { API_ENDPOINTS, PRESET_LABELS } from "../lib/constants";
+import { API_ENDPOINTS } from "../lib/constants";
+import { fetchJson, toUserMessage } from "../lib/api";
 import { resolveDocumentDisplayName } from "../lib/documentLabel";
 import type {
-  GraphPreset,
+  ChatTurn,
   SemanticEvidenceItem,
   SemanticEvidenceCluster,
   SemanticExplanation,
@@ -60,6 +61,9 @@ function normalizeSemanticResult(raw: Partial<SemanticQueryResponse>): SemanticQ
     limited_evidence: Boolean(raw.limited_evidence),
     uncertainty_signal: Boolean(raw.uncertainty_signal),
     uncertainty_reason: raw.uncertainty_reason ?? null,
+    confidence_badge: raw.confidence_badge || "NO_GROUNDING",
+    no_answer_reasons: Array.isArray(raw.no_answer_reasons) ? raw.no_answer_reasons : [],
+    closest_concepts: Array.isArray(raw.closest_concepts) ? raw.closest_concepts : [],
     mode: "semantic_grounded",
   };
 }
@@ -78,13 +82,17 @@ export default function CommandCenter() {
   const toggleCommandCenter = useAppStore((state) => state.toggleCommandCenter);
   const setHighlightedNodes = useAppStore((state) => state.setHighlightedNodes);
   const openPDFViewer = useAppStore((state) => state.openPDFViewer);
-  const graphPreset = useAppStore((state) => state.graphPreset);
-  const setGraphPreset = useAppStore((state) => state.setGraphPreset);
   const graphFilters = useAppStore((state) => state.graphFilters);
   const updateGraphFilters = useAppStore((state) => state.updateGraphFilters);
   const selectedDocumentId = useAppStore((state) => state.selectedDocumentId);
   const setSelectedDocumentId = useAppStore((state) => state.setSelectedDocumentId);
   const setSelectedNodeContext = useAppStore((state) => state.setSelectedNodeContext);
+  const queryMode = useAppStore((state) => state.queryMode);
+  const setQueryMode = useAppStore((state) => state.setQueryMode);
+  const graphFocusRelevantOnly = useAppStore((state) => state.graphFocusRelevantOnly);
+  const setGraphFocusRelevantOnly = useAppStore((state) => state.setGraphFocusRelevantOnly);
+  const chatTurns = useAppStore((state) => state.chatTurns);
+  const appendChatTurn = useAppStore((state) => state.appendChatTurn);
 
   // Auto-scroll to bottom.
   useEffect(() => {
@@ -104,40 +112,49 @@ export default function CommandCenter() {
     setInputMessage("");
     setIsLoadingResponse(true);
     setSemanticError(null);
+    const turnId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const userTurn: ChatTurn = { id: `${turnId}-u`, role: "user", text: inputMessage };
+    appendChatTurn(userTurn);
 
     try {
-      const response = await fetch(API_ENDPOINTS.QUERY_SEMANTIC, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          question: inputMessage,
-          document_id: selectedDocumentId || undefined,
-          include_citations: true,
-        }),
-      });
-
-      if (!response.ok) {
-        let detail = response.statusText;
-        try {
-          const errorBody = (await response.json()) as { detail?: string };
-          if (errorBody.detail) {
-            detail = errorBody.detail;
-          }
-        } catch {
-          // Keep default status text fallback.
-        }
-        throw new Error(`Failed to get response: ${detail}`);
-      }
-
-      const data = normalizeSemanticResult((await response.json()) as Partial<SemanticQueryResponse>);
+      const data = normalizeSemanticResult(
+        await fetchJson<Partial<SemanticQueryResponse>>(
+          API_ENDPOINTS.QUERY_SEMANTIC,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              question: inputMessage,
+              document_id: selectedDocumentId || undefined,
+              include_citations: true,
+              answer_mode: queryMode,
+            }),
+          },
+          20000
+        )
+      );
       setSemanticResult(data);
       setSemanticError(null);
+      appendChatTurn({
+        id: `${turnId}-s`,
+        role: "system",
+        text: data.answer,
+        result: data,
+      });
       const highlighted = data.related_nodes.map((node) => node.id);
       setHighlightedNodes(highlighted);
+      setGraphFocusRelevantOnly(highlighted.length > 0);
     } catch (error) {
       setSemanticResult(null);
       setHighlightedNodes([]);
-      setSemanticError(error instanceof Error ? error.message : "Unknown error occurred");
+      const message = toUserMessage(error);
+      setSemanticError(message);
+      appendChatTurn({
+        id: `${turnId}-s`,
+        role: "system",
+        text: message,
+        error: message,
+      });
     } finally {
       setIsLoadingResponse(false);
     }
@@ -181,16 +198,12 @@ export default function CommandCenter() {
         <Lightbulb className="w-3 h-3" />
         <span data-testid="insights-heading">Insights</span>
       </p>
-      <p className="text-[10px] text-white/60 font-mono">
-        Insights summarize repeated patterns, not every individual evidence snippet.
-      </p>
+      <p className="text-[10px] text-white/60 font-mono">Insights summarize repeated patterns, not every evidence line.</p>
       {insights.map((insight, idx) => (
         <div key={`${insight.type}-${idx}`} className="bg-black/30 border border-white/10 rounded px-3 py-2">
           <p className="text-[10px] text-yellow-300 font-mono">{insight.type}</p>
           <p className="text-xs text-white/85 font-mono mt-1">{insight.text}</p>
-          <p className="text-[10px] text-white/60 font-mono mt-1">
-            confidence {insight.confidence.toFixed(2)} · supports {insight.supporting_clusters.length}
-          </p>
+          <p className="text-[10px] text-white/60 font-mono mt-1">supports {insight.supporting_clusters.length}</p>
         </div>
       ))}
       {insights.length === 0 && (
@@ -234,9 +247,7 @@ export default function CommandCenter() {
       {clusters.length === 0 && (
         <div className="bg-black/30 border border-white/10 rounded px-3 py-2">
           <p className="text-[10px] text-white/60 font-mono">
-            {evidenceCount > 0
-              ? `Evidence exists (${evidenceCount}), but it could not be grouped into stable clusters yet.`
-              : "No clustered evidence available."}
+            {evidenceCount > 0 ? `Evidence exists (${evidenceCount}), but stable clustering is weak.` : "No clustered evidence available."}
           </p>
         </div>
       )}
@@ -264,10 +275,6 @@ export default function CommandCenter() {
     });
   };
 
-  const handlePresetChange = (preset: GraphPreset) => {
-    setGraphPreset(preset);
-  };
-
   const handleEntityInspect = (entity: SemanticRelatedNode) => {
     setSelectedNodeContext({
       id: entity.id,
@@ -275,14 +282,6 @@ export default function CommandCenter() {
       title: entity.display_name,
       rawText: `Inspecting entity: ${entity.display_name}`,
     });
-  };
-
-  const handleEvidenceToggle = (checked: boolean) => {
-    updateGraphFilters({ include_evidence: checked });
-  };
-
-  const handleCitationToggle = (checked: boolean) => {
-    updateGraphFilters({ include_citations: checked });
   };
 
   const buildInsightGroups = (insights: SemanticInsightItem[]) => {
@@ -304,6 +303,17 @@ export default function CommandCenter() {
       deferred: [...highConfidence.slice(DEFAULT_INSIGHT_LIMIT), ...lowConfidence],
     };
   };
+
+  const hasWeakGrounding =
+    !!semanticResult &&
+    semanticResult.evidence.length === 0 &&
+    (semanticResult.clusters || []).length === 0;
+  const confidenceBadgeLabel =
+    semanticResult?.confidence_badge === "GROUNDED"
+      ? "Grounded"
+      : semanticResult?.confidence_badge === "WEAK_GROUNDING"
+        ? "Weak Grounding"
+        : "No Grounding";
 
   return (
     <AnimatePresence mode="wait">
@@ -376,50 +386,61 @@ export default function CommandCenter() {
       {/* Content */}
       <div className="flex-1 overflow-hidden flex flex-col">
         <div className="p-3 border-b border-white/10 space-y-2">
-          <p className="text-[10px] font-mono uppercase tracking-wider text-white/60">
-            Graph Mode
-          </p>
-          <div className="grid grid-cols-3 gap-2">
-            {(["semantic", "evidence", "citation"] as GraphPreset[]).map((preset) => (
+          <p className="text-[10px] font-mono uppercase tracking-wider text-white/60">Query Mode</p>
+          <div className="grid grid-cols-2 gap-2">
+            {(["answer", "explore"] as const).map((mode) => (
               <button
-                key={preset}
-                onClick={() => handlePresetChange(preset)}
+                key={mode}
+                onClick={() => setQueryMode(mode)}
                 className={`px-2 py-1 rounded text-[10px] font-mono border transition-colors ${
-                  graphPreset === preset
-                    ? "border-cyan-400 text-cyan-300 bg-cyan-500/10"
-                    : "border-white/10 text-white/70 hover:bg-white/5"
+                  queryMode === mode ? "border-emerald-400 text-emerald-300 bg-emerald-500/10" : "border-white/10 text-white/70 hover:bg-white/5"
                 }`}
               >
-                {PRESET_LABELS[preset]}
+                {mode === "answer" ? "Answer Mode" : "Explore Mode"}
               </button>
             ))}
           </div>
-          <div className="flex items-center justify-between text-[10px] font-mono text-white/70">
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={!!graphFilters.include_evidence}
-                onChange={(e) => handleEvidenceToggle(e.target.checked)}
-              />
-              Evidence
-            </label>
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={!!graphFilters.include_citations}
-                onChange={(e) => handleCitationToggle(e.target.checked)}
-              />
-              Citations
-            </label>
+          <p className="text-[10px] text-white/55 font-mono">
+            Answer: strict grounded only · Explore: loose graph exploration, not final grounded answer.
+          </p>
+          <p className="text-[10px] font-mono uppercase tracking-wider text-white/60">
+            Graph
+          </p>
+          <div className="px-2 py-1 rounded text-[10px] font-mono border border-cyan-400 text-cyan-300 bg-cyan-500/10 inline-block">
+            Semantic
           </div>
+          <p className="text-[10px] text-white/55 font-mono">
+            Semantic graph is default. Extra graph layers are under Advanced.
+          </p>
+          <details className="bg-black/20 border border-white/10 rounded px-2 py-2">
+            <summary className="text-[10px] text-white/70 font-mono cursor-pointer">Advanced Graph Controls</summary>
+            <div className="mt-2 flex items-center justify-between text-[10px] font-mono text-white/70">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={Boolean(graphFilters.include_evidence)}
+                  onChange={(event) => updateGraphFilters({ include_evidence: event.target.checked })}
+                />
+                Evidence layer
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={Boolean(graphFilters.include_citations)}
+                  onChange={(event) => updateGraphFilters({ include_citations: event.target.checked })}
+                />
+                Citation layer
+              </label>
+            </div>
+          </details>
           <div className="flex items-center justify-between text-[10px] font-mono text-white/60">
             <span>Document Filter: {selectedDocumentId ? "Active" : "All Documents"}</span>
             {selectedDocumentId && (
               <button
                 onClick={() => setSelectedDocumentId(null)}
-                className="px-2 py-1 rounded border border-white/10 hover:bg-white/5"
+                className="px-3 py-1 rounded border border-amber-400/50 text-amber-200 bg-amber-500/10 hover:bg-amber-500/20 font-semibold"
               >
-                Clear
+                Clear Filter
               </button>
             )}
           </div>
@@ -427,44 +448,102 @@ export default function CommandCenter() {
         {activeTab === "query" ? (
           <>
             <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
+              {chatTurns.length > 0 && (
+                <div className="space-y-2">
+                  {chatTurns.map((turn) => (
+                    <div key={turn.id} className={`rounded px-3 py-2 border ${turn.role === "user" ? "border-cyan-500/40 bg-cyan-500/10" : "border-white/10 bg-black/20"}`}>
+                      <p className="text-[10px] uppercase tracking-wide font-mono text-white/70">{turn.role === "user" ? "User" : "System"}</p>
+                      <p className="text-[11px] font-mono text-white/90 mt-1">{turn.text}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
               {!semanticResult && !isLoadingResponse && (
                 <div className="text-center py-8">
                   <p className="text-xs text-cyan-300/80 font-mono mb-2">SEMANTIC QUERY PANEL</p>
-                  <p className="text-xs text-white/50 font-mono">ASK EVIDENCE-BACKED QUESTION</p>
+                  <p className="text-xs text-white/60 font-mono">Ask a focused research question. You will get an answer, evidence clusters, and citations.</p>
                 </div>
               )}
               {semanticResult && (
                 <div className="space-y-3">
-                  <div className="bg-black/40 border-l-2 border-cyan-500 rounded px-3 py-2">
-                    <p className="text-[10px] uppercase tracking-wide text-cyan-300 font-mono mb-1">
-                      Answer · confidence {semanticResult.confidence.toFixed(2)}
-                    </p>
-                    {semanticResult.limited_evidence && (
-                      <p
-                        className="text-[10px] text-amber-300 font-mono mb-1"
-                        data-testid="limited-evidence-flag"
-                      >
-                        LIMITED EVIDENCE
-                      </p>
-                    )}
-                    <p className="text-xs text-white/90 font-mono leading-relaxed">{semanticResult.answer}</p>
-                    {semanticResult.uncertainty_signal && (
-                      <p className="text-[10px] text-amber-200/90 font-mono mt-2" data-testid="uncertainty-signal">
-                        Uncertainty: {semanticResult.uncertainty_reason || "weak evidence match"}
-                      </p>
-                    )}
-                  </div>
                   <div className="bg-black/20 border border-white/10 rounded px-3 py-2">
-                    <p className="text-[10px] uppercase tracking-wide text-cyan-300 font-mono mb-2">Key Points</p>
-                    <ul className="space-y-1">
+                    <p className="text-[10px] uppercase tracking-wide text-cyan-300 font-mono">Grounding Status</p>
+                    <p className="text-[11px] text-white/80 font-mono mt-1">{confidenceBadgeLabel}</p>
+                  </div>
+                  {hasWeakGrounding ? (
+                    <div className="bg-black/40 border-l-2 border-amber-500 rounded px-3 py-2">
+                      <p className="text-[10px] uppercase tracking-wide text-amber-300 font-mono mb-1 flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3" />
+                        Insufficient Grounding
+                      </p>
+                      <p className="text-xs text-white/90 font-mono leading-relaxed">
+                        We couldn’t find strong supporting evidence for this question in your documents.
+                      </p>
+                      <div className="mt-2 border border-white/10 rounded px-2 py-2 bg-black/30">
+                        <p className="text-[10px] uppercase tracking-wide text-amber-300 font-mono">Why no answer?</p>
+                        <ul className="mt-1 space-y-1">
+                          {(semanticResult.no_answer_reasons || []).map((reason, index) => (
+                            <li key={`reason-${index}`} className="text-[10px] text-white/75 font-mono">- {reason}</li>
+                          ))}
+                          {(semanticResult.no_answer_reasons || []).length === 0 && (
+                            <li className="text-[10px] text-white/75 font-mono">- No supporting passages found.</li>
+                          )}
+                        </ul>
+                        {(semanticResult.closest_concepts || []).length > 0 && (
+                          <p className="text-[10px] text-white/65 font-mono mt-2">
+                            Closest concepts: {semanticResult.closest_concepts?.join(", ")}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        <button onClick={() => setInputMessage((v) => `${v} broader context`)} className="text-[10px] px-2 py-1 rounded border border-white/20 text-white/80 hover:bg-white/10">Broaden question</button>
+                        <button onClick={() => setSelectedDocumentId(null)} className="text-[10px] px-2 py-1 rounded border border-white/20 text-white/80 hover:bg-white/10">Clear document filter</button>
+                        <button onClick={() => setGraphPreset("semantic")} className="text-[10px] px-2 py-1 rounded border border-white/20 text-white/80 hover:bg-white/10">View graph</button>
+                        <button onClick={() => setActiveTab("query")} className="text-[10px] px-2 py-1 rounded border border-white/20 text-white/80 hover:bg-white/10">Inspect entity</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-black/40 border-l-2 border-cyan-500 rounded px-3 py-2">
+                      <p className="text-[10px] uppercase tracking-wide text-cyan-300 font-mono mb-1">
+                        Answer
+                      </p>
+                      {semanticResult.limited_evidence && (
+                        <p
+                          className="text-[10px] text-amber-300 font-mono mb-1"
+                          data-testid="limited-evidence-flag"
+                        >
+                          LIMITED EVIDENCE
+                        </p>
+                      )}
+                      <p className="text-xs text-white/90 font-mono leading-relaxed">{semanticResult.answer}</p>
+                      {semanticResult.uncertainty_signal && (
+                        <p className="text-[10px] text-amber-200/90 font-mono mt-2" data-testid="uncertainty-signal">
+                          Uncertainty: {semanticResult.uncertainty_reason || "weak evidence match"}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  <div className="bg-black/20 border border-white/10 rounded px-3 py-2">
+                    <p className="text-[10px] uppercase tracking-wide text-cyan-300 font-mono mb-2">Sources</p>
+                    <p className="text-[10px] text-white/70 font-mono">
+                      Evidence clusters: {(semanticResult.clusters || []).length} · Citations: {semanticResult.citations.length}
+                    </p>
+                  </div>
+                  <details className="bg-black/20 border border-white/10 rounded px-3 py-2">
+                    <summary className="text-[10px] uppercase tracking-wide text-cyan-300 font-mono cursor-pointer">Key Points</summary>
+                    <ul className="space-y-1 mt-2">
                       {(semanticResult.key_points || []).map((point, idx) => (
-                        <li key={`key-point-${idx}`} className="text-[11px] text-white/80 font-mono">
-                          - {point}
-                        </li>
+                        <li key={`key-point-${idx}`} className="text-[11px] text-white/80 font-mono">- {point}</li>
                       ))}
                     </ul>
-                  </div>
-                  {(() => {
+                  </details>
+                  <details className="space-y-2 bg-black/20 border border-white/10 rounded px-3 py-2">
+                    <summary className="text-[10px] uppercase tracking-wide text-purple-300 font-mono cursor-pointer">Evidence</summary>
+                    {renderClusters(semanticResult.clusters || [], semanticResult.evidence.length)}
+                  </details>
+                  <details className="bg-black/20 border border-white/10 rounded px-3 py-2">
+                    <summary className="text-[10px] uppercase tracking-wide text-yellow-300 font-mono cursor-pointer">Insights</summary>
+                    {(() => {
                     const groupedInsights = buildInsightGroups(semanticResult.insights || []);
                     return (
                       <div className="space-y-2">
@@ -484,38 +563,46 @@ export default function CommandCenter() {
                         )}
                       </div>
                     );
-                  })()}
-                  {renderClusters(semanticResult.clusters || [], semanticResult.evidence.length)}
-                  <div className="space-y-2">
-                    <p
-                      className="text-[10px] uppercase tracking-wide text-purple-300 font-mono"
-                      data-testid="citations-heading"
+                    })()}
+                  </details>
+                  <details className="space-y-2 bg-black/20 border border-white/10 rounded px-3 py-2">
+                    <summary className="text-[10px] uppercase tracking-wide text-purple-300 font-mono cursor-pointer">
+                      Citations (collapsed)
+                    </summary>
+                    <div className="space-y-2 max-h-44 overflow-y-auto">
+                      {semanticResult.citations.map((citation, idx) => (
+                        <button
+                          key={`${citation.reference_entry_id || citation.label}-${idx}`}
+                          onClick={() => handleCitationClick(citation)}
+                          data-testid={`citation-item-${idx}`}
+                          className="w-full text-left bg-black/30 border border-white/10 rounded px-3 py-2 hover:bg-white/5 transition-colors"
+                        >
+                          <p className="text-[10px] text-cyan-300 font-mono">{citation.label}</p>
+                          <p className="text-[10px] text-white/60 font-mono mt-1">
+                            {resolveDocumentDisplayName(
+                              citation.document_name ?? undefined,
+                              undefined,
+                              citation.document_name ?? "Unknown document"
+                            )}
+                            {citation.page ? ` · page ${citation.page}` : ""}
+                          </p>
+                        </button>
+                      ))}
+                      {semanticResult.citations.length === 0 && (
+                        <div className="bg-black/30 border border-white/10 rounded px-3 py-2">
+                          <p className="text-[10px] text-white/60 font-mono">No citation links were returned.</p>
+                        </div>
+                      )}
+                    </div>
+                  </details>
+                  <div className="bg-black/20 border border-white/10 rounded px-3 py-2">
+                    <p className="text-[10px] uppercase tracking-wide text-cyan-300 font-mono mb-2">Graph</p>
+                    <button
+                      onClick={() => setGraphFocusRelevantOnly(!graphFocusRelevantOnly)}
+                      className="text-[10px] px-2 py-1 rounded border border-white/20 text-white/80 hover:bg-white/10"
                     >
-                      Citations
-                    </p>
-                    {semanticResult.citations.map((citation, idx) => (
-                      <button
-                        key={`${citation.reference_entry_id || citation.label}-${idx}`}
-                        onClick={() => handleCitationClick(citation)}
-                        data-testid={`citation-item-${idx}`}
-                        className="w-full text-left bg-black/30 border border-white/10 rounded px-3 py-2 hover:bg-white/5 transition-colors"
-                      >
-                        <p className="text-[10px] text-cyan-300 font-mono">{citation.label}</p>
-                        <p className="text-[10px] text-white/60 font-mono mt-1">
-                          {resolveDocumentDisplayName(
-                            citation.document_name ?? undefined,
-                            undefined,
-                            citation.document_name ?? "Unknown document"
-                          )}
-                          {citation.page ? ` · page ${citation.page}` : ""}
-                        </p>
-                      </button>
-                    ))}
-                    {semanticResult.citations.length === 0 && (
-                      <div className="bg-black/30 border border-white/10 rounded px-3 py-2">
-                        <p className="text-[10px] text-white/60 font-mono">No citation links were returned.</p>
-                      </div>
-                    )}
+                      {graphFocusRelevantOnly ? "Showing relevant nodes only" : "Show only relevant nodes"}
+                    </button>
                   </div>
                   <details
                     className="bg-black/20 border border-white/10 rounded px-3 py-2"
@@ -599,7 +686,7 @@ export default function CommandCenter() {
             </div>
 
             {/* Input */}
-            <div className="p-4 border-t border-white/10">
+            <div className="p-4 border-t border-white/10 sticky bottom-0 bg-black/40 backdrop-blur">
               <div className="flex gap-2 items-end">
                 <div className="flex-1 relative">
                   <textarea

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import Inspector from "../Inspector";
 import { useAppStore } from "../../store/useAppStore";
 
@@ -43,12 +43,15 @@ describe("Inspector", () => {
 
     render(<Inspector />);
     await waitFor(() => expect(screen.getAllByText("Node summary").length).toBeGreaterThan(0));
+    expect(screen.getByText("Quick View")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Expand details"));
     expect(screen.getByText("Grouped Relations")).toBeInTheDocument();
     expect(screen.getByText("Incoming")).toBeInTheDocument();
     expect(screen.getByText("Outgoing")).toBeInTheDocument();
     expect(screen.getByText("Top Evidence Snippets")).toBeInTheDocument();
     expect(screen.getByText("Citations")).toBeInTheDocument();
-    expect(screen.getByText("Canonical Panel")).toBeInTheDocument();
+    expect(screen.getByText("Canonical Importance")).toBeInTheDocument();
+    expect(screen.getByText("Why this matters")).toBeInTheDocument();
     expect(screen.getByText("Aliases")).toBeInTheDocument();
   });
 });

@@ -34,6 +34,10 @@ class EvalCase:
     expected_no_link: bool = False
     expects_alias_expansion: bool = False
     expected_insight_presence: bool = False
+    expected_citation_labels: List[str] | None = None
+    expected_reference_entry_ids: List[str] | None = None
+    citation_match_mode: str = "lenient"
+    should_not_answer: bool = False
 
 
 class FixtureNode:
@@ -192,9 +196,71 @@ def _as_cases(raw: Dict[str, Any]) -> List[EvalCase]:
             expected_no_link=bool(item.get("expected_no_link", False)),
             expects_alias_expansion=bool(item.get("expects_alias_expansion", False)),
             expected_insight_presence=bool(item.get("expected_insight_presence", False)),
+            expected_citation_labels=[str(v) for v in item.get("expected_citation_labels", [])] or None,
+            expected_reference_entry_ids=[str(v) for v in item.get("expected_reference_entry_ids", [])] or None,
+            citation_match_mode=str(item.get("citation_match_mode", "lenient")),
+            should_not_answer=bool(item.get("should_not_answer", False)),
         )
         for item in raw.get("cases", [])
     ]
+
+
+def _load_case_citation_expectations(fixtures_dir: Path, cases: List[EvalCase]) -> List[EvalCase]:
+    expected_path = fixtures_dir / "expected_citations.json"
+    if not expected_path.exists():
+        return cases
+
+    raw = _load_json(expected_path)
+    by_case = {
+        str(item.get("case_id")): item
+        for item in raw.get("cases", [])
+        if item.get("case_id")
+    }
+    enriched: List[EvalCase] = []
+    for case in cases:
+        expectation = by_case.get(case.case_id, {})
+        expected_labels = [str(v) for v in expectation.get("expected_citation_labels", [])] or case.expected_citation_labels
+        expected_refs = [str(v) for v in expectation.get("expected_reference_entry_ids", [])] or case.expected_reference_entry_ids
+        match_mode = str(expectation.get("citation_match_mode", case.citation_match_mode))
+        enriched.append(
+            EvalCase(
+                case_id=case.case_id,
+                document_id=case.document_id,
+                question=case.question,
+                expected_intent=case.expected_intent,
+                expected_entities=case.expected_entities,
+                expected_sections=case.expected_sections,
+                expected_citation_presence=case.expected_citation_presence,
+                expected_keywords=case.expected_keywords,
+                expected_cross_document_hit=case.expected_cross_document_hit,
+                case_type=case.case_type,
+                expected_no_link=case.expected_no_link,
+                expects_alias_expansion=case.expects_alias_expansion,
+                expected_insight_presence=case.expected_insight_presence,
+                expected_citation_labels=expected_labels,
+                expected_reference_entry_ids=expected_refs,
+                citation_match_mode=match_mode,
+                should_not_answer=case.should_not_answer,
+            )
+        )
+    return enriched
+
+
+def _citation_expectation_ok(
+    case: EvalCase,
+    actual_labels: set[str],
+    actual_refs: set[str],
+) -> bool:
+    expected_labels = {item.lower() for item in (case.expected_citation_labels or [])}
+    expected_refs = {item.lower() for item in (case.expected_reference_entry_ids or [])}
+    if not expected_labels and not expected_refs:
+        return True
+
+    label_hits = expected_labels.intersection(actual_labels)
+    ref_hits = expected_refs.intersection(actual_refs)
+    if case.citation_match_mode == "strict":
+        return label_hits == expected_labels and ref_hits == expected_refs
+    return bool(label_hits) or bool(ref_hits)
 
 
 def _keyword_hit_ratio(text: str, keywords: Sequence[str]) -> float:
@@ -215,7 +281,7 @@ def _entity_recall(expected: Sequence[str], actual: Sequence[str]) -> float:
 
 def run_eval(fixtures_dir: Path) -> int:
     documents = _load_json(fixtures_dir / "documents.json")
-    cases = _as_cases(_load_json(fixtures_dir / "cases.json"))
+    cases = _load_case_citation_expectations(fixtures_dir, _as_cases(_load_json(fixtures_dir / "cases.json")))
     fixture_map = {doc["id"]: doc for doc in documents.get("documents", [])}
     service = FixtureSemanticQueryService(fixtures=fixture_map)
 
@@ -227,6 +293,7 @@ def run_eval(fixtures_dir: Path) -> int:
     intent_correct = 0
     evidence_presence_correct = 0
     citation_presence_correct = 0
+    citation_expectation_correct = 0
     section_hits = 0
     keyword_ratio_sum = 0.0
     entity_recall_sum = 0.0
@@ -244,6 +311,8 @@ def run_eval(fixtures_dir: Path) -> int:
     cluster_quality_sum = 0.0
     case_type_totals: Dict[str, int] = {}
     case_type_pass: Dict[str, int] = {}
+    should_not_answer_total = 0
+    should_not_answer_answered = 0
 
     print("\nSemantic Query Eval Report")
     print("=" * 72)
@@ -260,6 +329,11 @@ def run_eval(fixtures_dir: Path) -> int:
         intent_ok = response.query_intent == case.expected_intent
         evidence_ok = bool(response.evidence)
         citation_ok = bool(response.citations) == case.expected_citation_presence
+        actual_citation_labels = {str(item.label).lower() for item in response.citations if item.label}
+        actual_reference_ids = {
+            str(item.reference_entry_id).lower() for item in response.citations if item.reference_entry_id
+        }
+        citation_expectation_ok = _citation_expectation_ok(case, actual_citation_labels, actual_reference_ids)
         expected_section_set = {s.lower() for s in case.expected_sections}
         actual_section_set = {str(item.section or "").lower() for item in response.evidence}
         section_ok = bool(expected_section_set.intersection(actual_section_set)) if expected_section_set else True
@@ -300,16 +374,22 @@ def run_eval(fixtures_dir: Path) -> int:
             int(intent_ok)
             + int(evidence_ok)
             + int(citation_ok)
+            + int(citation_expectation_ok)
             + int(section_ok)
             + int(keyword_ratio >= 0.5)
             + int(recall >= 0.5)
             + int(insight_present == case.expected_insight_presence)
-        ) / 7
+        ) / 8
+        if case.should_not_answer:
+            should_not_answer_total += 1
+            answered = response.answer.strip().lower() != "no grounded answer found in the current documents.".lower()
+            should_not_answer_answered += int(answered)
         case_type_pass[case.case_type] = case_type_pass.get(case.case_type, 0) + int(case_pass_score >= 0.7)
 
         intent_correct += int(intent_ok)
         evidence_presence_correct += int(evidence_ok)
         citation_presence_correct += int(citation_ok)
+        citation_expectation_correct += int(citation_expectation_ok)
         section_hits += int(section_ok)
         keyword_ratio_sum += keyword_ratio
         entity_recall_sum += recall
@@ -323,6 +403,12 @@ def run_eval(fixtures_dir: Path) -> int:
         print(
             f"  citation: expected={case.expected_citation_presence} actual={bool(response.citations)} ok={citation_ok}"
         )
+        if case.expected_citation_labels or case.expected_reference_entry_ids:
+            print(
+                "  citation expectation: "
+                f"labels={case.expected_citation_labels or []} refs={case.expected_reference_entry_ids or []} "
+                f"mode={case.citation_match_mode} ok={citation_expectation_ok}"
+            )
         print(f"  sections: expected={case.expected_sections} actual={sorted(actual_section_set)} ok={section_ok}")
         print(f"  keywords: ratio={keyword_ratio:.2f} expected={case.expected_keywords}")
         print(f"  entities: recall={recall:.2f} expected={case.expected_entities}")
@@ -341,6 +427,7 @@ def run_eval(fixtures_dir: Path) -> int:
     print(f"Intent accuracy         : {intent_correct / total:.2%}")
     print(f"Evidence presence       : {evidence_presence_correct / total:.2%}")
     print(f"Citation presence       : {citation_presence_correct / total:.2%}")
+    print(f"Citation expectation    : {citation_expectation_correct / total:.2%}")
     print(f"Section coverage        : {section_hits / total:.2%}")
     print(f"Keyword hit ratio       : {keyword_ratio_sum / total:.2%}")
     print(f"Matched entity recall   : {entity_recall_sum / total:.2%}")
@@ -362,6 +449,9 @@ def run_eval(fixtures_dir: Path) -> int:
             total_count = case_type_totals[case_type]
             pass_count = case_type_pass.get(case_type, 0)
             print(f"{case_type:<24}: {pass_count / total_count:.2%} ({pass_count}/{total_count})")
+    if should_not_answer_total:
+        hallucination_rate = should_not_answer_answered / should_not_answer_total
+        print(f"\nHallucination rate      : {hallucination_rate:.2%} ({should_not_answer_answered}/{should_not_answer_total})")
     return 0
 
 
@@ -372,8 +462,18 @@ def main() -> int:
         default=str(Path(__file__).resolve().parents[1] / "evals" / "semantic_query"),
         help="Path containing documents.json and cases.json",
     )
+    parser.add_argument(
+        "--profile",
+        choices=["semantic_query", "acceptance_real"],
+        default=None,
+        help="Eval fixture profile under backend/evals.",
+    )
     args = parser.parse_args()
-    return run_eval(Path(args.fixtures_dir))
+    if args.profile:
+        fixture_path = Path(__file__).resolve().parents[1] / "evals" / args.profile
+    else:
+        fixture_path = Path(args.fixtures_dir)
+    return run_eval(fixture_path)
 
 
 if __name__ == "__main__":

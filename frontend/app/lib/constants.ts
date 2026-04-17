@@ -23,11 +23,23 @@ export const API_ENDPOINTS = {
   STATIC: (filename: string) => apiUrl(`/static/${encodeURIComponent(filename)}`),
 } as const;
 
+export const CORE_SEMANTIC_NODE_TYPES: SemanticNodeType[] = [
+  "Author",
+  "Institution",
+  "Concept",
+  "Method",
+  "Dataset",
+  "Metric",
+  "Task",
+  "RelationInstance",
+];
+
 export const PRESET_FILTERS: Record<GraphPreset, GraphFilters> = {
   semantic: {
-    include_structural: true,
+    include_structural: false,
     include_evidence: false,
     include_citations: false,
+    node_types: [...CORE_SEMANTIC_NODE_TYPES],
   },
   evidence: {
     include_structural: true,
@@ -41,19 +53,16 @@ export const PRESET_FILTERS: Record<GraphPreset, GraphFilters> = {
   },
 };
 
+export const GRAPH_LIMITS = {
+  MAX_NODES: 300,
+  MAX_EDGES: 500,
+  INITIAL_NODES: 120,
+  INITIAL_EDGES: 180,
+  UPDATE_DEBOUNCE_MS: 300,
+} as const;
+
 export const PRESET_LABELS: Record<GraphPreset, string> = {
   semantic: "Semantic",
   evidence: "Evidence",
   citation: "Citation",
 };
-
-export const CORE_SEMANTIC_NODE_TYPES: SemanticNodeType[] = [
-  "Author",
-  "Institution",
-  "Concept",
-  "Method",
-  "Dataset",
-  "Metric",
-  "Task",
-  "RelationInstance",
-];

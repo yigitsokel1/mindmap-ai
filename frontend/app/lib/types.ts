@@ -80,10 +80,26 @@ export interface NodeContext {
   id: string;
   label: string;
   title: string;
+  shortDescription?: string;
   documentName?: string;
   page?: number;
   rawText?: string;
   details?: NodeDetail | Record<string, unknown>;
+}
+
+export interface NodePreview {
+  id: string;
+  type: string;
+  name: string;
+  short_description: string;
+}
+
+export interface ChatTurn {
+  id: string;
+  role: "user" | "system";
+  text: string;
+  result?: SemanticQueryResponse | null;
+  error?: string | null;
 }
 
 export interface NodeRelationItem {
@@ -200,9 +216,12 @@ export interface SemanticQueryResponse {
   insights?: SemanticInsightItem[];
   clusters?: SemanticEvidenceCluster[];
   confidence: number;
+  confidence_badge?: "GROUNDED" | "WEAK_GROUNDING" | "NO_GROUNDING";
   limited_evidence?: boolean;
   uncertainty_signal?: boolean;
   uncertainty_reason?: string | null;
+  no_answer_reasons?: string[];
+  closest_concepts?: string[];
   mode: "semantic_grounded";
 }
 

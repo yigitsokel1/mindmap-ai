@@ -35,7 +35,7 @@ class AnswerComposer:
                 len(candidates),
                 question,
             )
-            return f"Matched semantic nodes for '{question}', but no supporting evidence was found."
+            return "We couldn’t find strong supporting evidence for this question in your documents."
 
         top_evidence = self._dedupe_evidence(evidence, limit=3)
         first = top_evidence[0]

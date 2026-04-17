@@ -19,6 +19,7 @@ export function resolveDocumentDisplayName(
 
 export function resolveNodeDisplayName(node: GraphNode): string {
   const props = node.properties || {};
+  const name = asString(props.name) || asString(node.name);
   const fileName = asString(props.file_name) || asString(props.saved_file_name);
   const title = asString(props.title) || asString(props.document_title);
   const graphDisplay = asString(node.display_name);
@@ -31,5 +32,5 @@ export function resolveNodeDisplayName(node: GraphNode): string {
     return graphDisplay;
   }
 
-  return title || fileName || graphDisplay || node.id;
+  return name || title || fileName || graphDisplay || node.id;
 }
