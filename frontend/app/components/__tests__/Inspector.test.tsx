@@ -42,12 +42,13 @@ describe("Inspector", () => {
     );
 
     render(<Inspector />);
-    await waitFor(() => expect(screen.getByText("Node summary")).toBeInTheDocument());
-    expect(screen.getByText("Incoming Relations")).toBeInTheDocument();
-    expect(screen.getByText("Outgoing Relations")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByText("Node summary").length).toBeGreaterThan(0));
+    expect(screen.getByText("Grouped Relations")).toBeInTheDocument();
+    expect(screen.getByText("Incoming")).toBeInTheDocument();
+    expect(screen.getByText("Outgoing")).toBeInTheDocument();
     expect(screen.getByText("Top Evidence Snippets")).toBeInTheDocument();
-    expect(screen.getByText("Linked Citations")).toBeInTheDocument();
-    expect(screen.getByText("Canonical Link")).toBeInTheDocument();
+    expect(screen.getByText("Citations")).toBeInTheDocument();
+    expect(screen.getByText("Canonical Panel")).toBeInTheDocument();
     expect(screen.getByText("Aliases")).toBeInTheDocument();
   });
 });

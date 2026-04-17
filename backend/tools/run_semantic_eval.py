@@ -242,10 +242,13 @@ def run_eval(fixtures_dir: Path) -> int:
     insight_presence_correct = 0
     insight_correctness_sum = 0.0
     cluster_quality_sum = 0.0
+    case_type_totals: Dict[str, int] = {}
+    case_type_pass: Dict[str, int] = {}
 
     print("\nSemantic Query Eval Report")
     print("=" * 72)
     for case in cases:
+        case_type_totals[case.case_type] = case_type_totals.get(case.case_type, 0) + 1
         response = service.answer(
             SemanticQueryRequest(
                 question=case.question,
@@ -293,6 +296,16 @@ def run_eval(fixtures_dir: Path) -> int:
             avg_importance = sum(cluster.importance for cluster in response.clusters) / len(response.clusters)
             cluster_quality = min(1.0, (0.6 * avg_importance) + (0.4 * (cited_clusters / len(response.clusters))))
         cluster_quality_sum += cluster_quality
+        case_pass_score = (
+            int(intent_ok)
+            + int(evidence_ok)
+            + int(citation_ok)
+            + int(section_ok)
+            + int(keyword_ratio >= 0.5)
+            + int(recall >= 0.5)
+            + int(insight_present == case.expected_insight_presence)
+        ) / 7
+        case_type_pass[case.case_type] = case_type_pass.get(case.case_type, 0) + int(case_pass_score >= 0.7)
 
         intent_correct += int(intent_ok)
         evidence_presence_correct += int(evidence_ok)
@@ -342,6 +355,13 @@ def run_eval(fixtures_dir: Path) -> int:
         print(f"No-link correctness     : {no_link_correct / no_link_total:.2%}")
     if alias_cases_total:
         print(f"Alias expansion success : {alias_success_count / alias_cases_total:.2%}")
+    if case_type_totals:
+        print("\nCase-Type Breakdown")
+        print("=" * 72)
+        for case_type in sorted(case_type_totals):
+            total_count = case_type_totals[case_type]
+            pass_count = case_type_pass.get(case_type, 0)
+            print(f"{case_type:<24}: {pass_count / total_count:.2%} ({pass_count}/{total_count})")
     return 0
 
 

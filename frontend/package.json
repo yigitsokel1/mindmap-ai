@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "test:smoke": "playwright test --project=smoke",
     "test:e2e:headed": "playwright test --headed"
   },
   "dependencies": {

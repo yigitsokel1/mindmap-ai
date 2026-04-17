@@ -17,6 +17,9 @@ import type {
   SemanticQueryResponse,
 } from "../lib/types";
 
+const DEFAULT_INSIGHT_LIMIT = 3;
+const LOW_CONFIDENCE_THRESHOLD = 0.55;
+
 const EMPTY_EXPLANATION: SemanticExplanation = {
   why_these_entities: [],
   why_this_evidence: [],
@@ -172,11 +175,14 @@ export default function CommandCenter() {
     });
   };
 
-  const renderInsights = (insights: SemanticInsightItem[]) => (
+  const renderInsights = (insights: SemanticInsightItem[], hasAnswer: boolean) => (
     <div className="space-y-2">
       <p className="text-[10px] uppercase tracking-wide text-yellow-300 font-mono flex items-center gap-1">
         <Lightbulb className="w-3 h-3" />
-        Insights
+        <span data-testid="insights-heading">Insights</span>
+      </p>
+      <p className="text-[10px] text-white/60 font-mono">
+        Insights summarize repeated patterns, not every individual evidence snippet.
       </p>
       {insights.map((insight, idx) => (
         <div key={`${insight.type}-${idx}`} className="bg-black/30 border border-white/10 rounded px-3 py-2">
@@ -189,17 +195,21 @@ export default function CommandCenter() {
       ))}
       {insights.length === 0 && (
         <div className="bg-black/30 border border-white/10 rounded px-3 py-2">
-          <p className="text-[10px] text-white/60 font-mono">No insight clusters were generated.</p>
+          <p className="text-[10px] text-white/60 font-mono">
+            {hasAnswer
+              ? "Answer is ready, but there was not enough strong support to form stable insights yet."
+              : "No insight clusters were generated."}
+          </p>
         </div>
       )}
     </div>
   );
 
-  const renderClusters = (clusters: SemanticEvidenceCluster[]) => (
+  const renderClusters = (clusters: SemanticEvidenceCluster[], evidenceCount: number) => (
     <div className="space-y-2">
       <p className="text-[10px] uppercase tracking-wide text-purple-300 font-mono flex items-center gap-1">
         <Network className="w-3 h-3" />
-        Evidence (Clustered)
+        <span data-testid="clustered-evidence-heading">Evidence (Clustered)</span>
       </p>
       {clusters.map((cluster) => (
         <div key={cluster.cluster_key} className="bg-black/30 border border-white/10 rounded px-3 py-2 space-y-2">
@@ -223,7 +233,11 @@ export default function CommandCenter() {
       ))}
       {clusters.length === 0 && (
         <div className="bg-black/30 border border-white/10 rounded px-3 py-2">
-          <p className="text-[10px] text-white/60 font-mono">No clustered evidence available.</p>
+          <p className="text-[10px] text-white/60 font-mono">
+            {evidenceCount > 0
+              ? `Evidence exists (${evidenceCount}), but it could not be grouped into stable clusters yet.`
+              : "No clustered evidence available."}
+          </p>
         </div>
       )}
     </div>
@@ -269,6 +283,26 @@ export default function CommandCenter() {
 
   const handleCitationToggle = (checked: boolean) => {
     updateGraphFilters({ include_citations: checked });
+  };
+
+  const buildInsightGroups = (insights: SemanticInsightItem[]) => {
+    const seen = new Set<string>();
+    const unique = insights.filter((insight) => {
+      const key = insight.text.toLowerCase().trim();
+      if (!key || seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+
+    const highConfidence = unique.filter((insight) => insight.confidence >= LOW_CONFIDENCE_THRESHOLD);
+    const lowConfidence = unique.filter((insight) => insight.confidence < LOW_CONFIDENCE_THRESHOLD);
+
+    return {
+      primary: highConfidence.slice(0, DEFAULT_INSIGHT_LIMIT),
+      deferred: [...highConfidence.slice(DEFAULT_INSIGHT_LIMIT), ...lowConfidence],
+    };
   };
 
   return (
@@ -421,23 +455,6 @@ export default function CommandCenter() {
                     )}
                   </div>
                   <div className="bg-black/20 border border-white/10 rounded px-3 py-2">
-                    <p className="text-[10px] uppercase tracking-wide text-cyan-300 font-mono mb-2">
-                      Why This Answer
-                    </p>
-                    <ul className="space-y-1">
-                      {semanticResult.explanation.why_this_evidence.map((reason, idx) => (
-                        <li key={`why-evidence-${idx}`} className="text-[11px] text-white/80 font-mono">
-                          - {reason}
-                        </li>
-                      ))}
-                      {semanticResult.explanation.reasoning_path.map((step, idx) => (
-                        <li key={`reasoning-path-${idx}`} className="text-[10px] text-white/60 font-mono">
-                          - {step}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                  <div className="bg-black/20 border border-white/10 rounded px-3 py-2">
                     <p className="text-[10px] uppercase tracking-wide text-cyan-300 font-mono mb-2">Key Points</p>
                     <ul className="space-y-1">
                       {(semanticResult.key_points || []).map((point, idx) => (
@@ -447,28 +464,28 @@ export default function CommandCenter() {
                       ))}
                     </ul>
                   </div>
-                  {renderInsights(semanticResult.insights || [])}
-                  <div className="bg-black/20 border border-white/10 rounded px-3 py-2">
-                    <p className="text-[10px] uppercase tracking-wide text-cyan-300 font-mono mb-2">
-                      Matched Entities
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {semanticResult.matched_entities.map((entity) => (
-                        <button
-                          key={entity.id}
-                          onClick={() => handleEntityInspect(entity)}
-                          data-testid={`inspect-entity-${entity.id}`}
-                          className="text-[10px] font-mono px-2 py-1 rounded border border-cyan-500/30 text-cyan-200 bg-cyan-500/5"
-                        >
-                          {entity.display_name}
-                        </button>
-                      ))}
-                      {semanticResult.matched_entities.length === 0 && (
-                        <p className="text-[10px] text-white/50 font-mono">No entities matched for this question.</p>
-                      )}
-                    </div>
-                  </div>
-                  {renderClusters(semanticResult.clusters || [])}
+                  {(() => {
+                    const groupedInsights = buildInsightGroups(semanticResult.insights || []);
+                    return (
+                      <div className="space-y-2">
+                        {renderInsights(groupedInsights.primary, Boolean(semanticResult.answer))}
+                        {groupedInsights.deferred.length > 0 && (
+                          <details className="bg-black/20 border border-white/10 rounded px-3 py-2">
+                            <summary className="text-[10px] uppercase tracking-wide text-yellow-300 font-mono cursor-pointer">
+                              Additional Insights ({groupedInsights.deferred.length})
+                            </summary>
+                            <p className="text-[10px] text-white/60 font-mono mt-2">
+                              Lower-confidence or overflow insights are folded to keep the response focused.
+                            </p>
+                            <div className="mt-2">
+                              {renderInsights(groupedInsights.deferred, Boolean(semanticResult.answer))}
+                            </div>
+                          </details>
+                        )}
+                      </div>
+                    );
+                  })()}
+                  {renderClusters(semanticResult.clusters || [], semanticResult.evidence.length)}
                   <div className="space-y-2">
                     <p
                       className="text-[10px] uppercase tracking-wide text-purple-300 font-mono"
@@ -500,6 +517,53 @@ export default function CommandCenter() {
                       </div>
                     )}
                   </div>
+                  <details
+                    className="bg-black/20 border border-white/10 rounded px-3 py-2"
+                    data-testid="advanced-reasoning-details"
+                  >
+                    <summary className="text-[10px] uppercase tracking-wide text-cyan-300 font-mono cursor-pointer">
+                      Advanced Reasoning Details
+                    </summary>
+                    <div className="mt-2 space-y-2">
+                      <p className="text-[10px] text-white/60 font-mono">
+                        Why these results were chosen and which entities were matched.
+                      </p>
+                      <ul className="space-y-1">
+                        {semanticResult.explanation.why_this_evidence.map((reason, idx) => (
+                          <li key={`why-evidence-${idx}`} className="text-[11px] text-white/80 font-mono">
+                            - {reason}
+                          </li>
+                        ))}
+                        {semanticResult.explanation.reasoning_path.map((step, idx) => (
+                          <li key={`reasoning-path-${idx}`} className="text-[10px] text-white/60 font-mono">
+                            - {step}
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="pt-1">
+                        <p className="text-[10px] uppercase tracking-wide text-cyan-300 font-mono mb-2">
+                          Matched Entities
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {semanticResult.matched_entities.map((entity) => (
+                            <button
+                              key={entity.id}
+                              onClick={() => handleEntityInspect(entity)}
+                              data-testid={`inspect-entity-${entity.id}`}
+                              className="text-[10px] font-mono px-2 py-1 rounded border border-cyan-500/30 text-cyan-200 bg-cyan-500/5"
+                            >
+                              {entity.display_name}
+                            </button>
+                          ))}
+                          {semanticResult.matched_entities.length === 0 && (
+                            <p className="text-[10px] text-white/50 font-mono">
+                              No entities matched for this question.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </details>
                 </div>
               )}
               {semanticError && (

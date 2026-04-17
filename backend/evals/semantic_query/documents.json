@@ -216,6 +216,46 @@
           "page": 4
         }
       ]
+    },
+    {
+      "id": "doc-noisy-fragments",
+      "name": "noisy_fragments.pdf",
+      "entities": [
+        {
+          "id": "m-fragment-rag",
+          "type": "Method",
+          "display_name": "Fragmented RAG",
+          "aliases": ["frg rag", "fragment-rag"]
+        },
+        {
+          "id": "c-latency-jitter",
+          "type": "Concept",
+          "display_name": "Latency Jitter"
+        }
+      ],
+      "evidence": [
+        {
+          "entity_id": "m-fragment-rag",
+          "relation_type": "USES",
+          "snippet": "Fragmented RAG ...",
+          "section": "Unknown",
+          "page": 1
+        },
+        {
+          "entity_id": "m-fragment-rag",
+          "relation_type": "USES",
+          "snippet": "Fragmented RAG ...",
+          "section": "Unknown",
+          "page": 1
+        },
+        {
+          "entity_id": "c-latency-jitter",
+          "relation_type": "SUPPORTS",
+          "snippet": "Observed latency jitter under sparse retrieval traces.",
+          "section": null,
+          "page": 2
+        }
+      ]
     }
   ]
 }

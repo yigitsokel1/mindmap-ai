@@ -13,7 +13,7 @@ describe("CommandCenter", () => {
     });
   });
 
-  it("renders answer/evidence/citations/why/matched blocks after semantic query", async () => {
+  it("renders answer/key insights/clustered evidence/citations hierarchy after semantic query", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
@@ -55,9 +55,10 @@ describe("CommandCenter", () => {
     fireEvent.click(screen.getByTitle("Send"));
 
     await waitFor(() => expect(screen.getByText(/Grounded answer/i)).toBeInTheDocument());
-    expect(screen.getByText("Why This Answer")).toBeInTheDocument();
-    expect(screen.getByText("Matched Entities")).toBeInTheDocument();
-    expect(screen.getByText("Top Evidence")).toBeInTheDocument();
+    expect(screen.getByText("Key Points")).toBeInTheDocument();
+    expect(screen.getByText("Insights")).toBeInTheDocument();
+    expect(screen.getByText("Evidence (Clustered)")).toBeInTheDocument();
     expect(screen.getAllByText("Citations").length).toBeGreaterThan(0);
+    expect(screen.getByText("Advanced Reasoning Details")).toBeInTheDocument();
   });
 });

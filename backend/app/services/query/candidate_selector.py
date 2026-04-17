@@ -29,46 +29,86 @@ class CandidateSelector:
         node_types: list[str],
     ) -> List[CandidateEntity]:
         tokens = interpreted.entity_hints or self.tokenize_question(question)
-        local_candidates = self.reader.find_candidate_entities(
+        local_candidates = self._fetch_local_candidates(tokens, document_id, node_types, interpreted.intent)
+        canonical_candidates = self.reader.lookup_canonical_candidates(tokens)
+        boosted = self._apply_disambiguation_boost(
+            [*local_candidates, *canonical_candidates],
+            interpreted.disambiguation_terms,
+        )
+        merged = self._merge_candidates(boosted)
+        deduped = self._dedupe_canonical(merged)
+        return self._select_representatives(deduped)
+
+    def _fetch_local_candidates(
+        self,
+        tokens: list[str],
+        document_id: str | None,
+        node_types: list[str],
+        intent: str,
+    ) -> List[CandidateEntity]:
+        local = self.reader.find_candidate_entities(
             tokens=tokens,
             document_id=document_id,
             node_types=node_types,
         )
-        if not local_candidates:
-            local_candidates = self.reader.find_fallback_entities(
-                document_id=document_id,
-                node_types=node_types,
-                intent=interpreted.intent,
-            )
-        canonical_candidates = self.reader.lookup_canonical_candidates(tokens)
-        disambiguation_terms = {term.lower() for term in interpreted.disambiguation_terms}
-        merged_by_id: dict[str, CandidateEntity] = {}
-        for candidate in [*local_candidates, *canonical_candidates]:
-            boosted_candidate = candidate
-            if disambiguation_terms and any(term in candidate.name.lower() for term in disambiguation_terms):
-                boosted_candidate = candidate.model_copy(
-                    update={
-                        "score": min(1.0, candidate.score + 0.1),
-                        "match_reason": f"{candidate.match_reason}|disambiguation_context",
-                    }
+        if local:
+            return local
+        return self.reader.find_fallback_entities(
+            document_id=document_id,
+            node_types=node_types,
+            intent=intent,
+        )
+
+    @staticmethod
+    def _apply_disambiguation_boost(
+        candidates: List[CandidateEntity],
+        disambiguation_terms: list[str],
+    ) -> List[CandidateEntity]:
+        boosted: List[CandidateEntity] = []
+        terms = {term.lower() for term in disambiguation_terms}
+        for candidate in candidates:
+            if terms and any(term in candidate.name.lower() for term in terms):
+                boosted.append(
+                    candidate.model_copy(
+                        update={
+                            "score": min(1.0, candidate.score + 0.1),
+                            "match_reason": f"{candidate.match_reason}|disambiguation_context",
+                        }
+                    )
                 )
+                continue
+            boosted.append(candidate)
+        return boosted
+
+    @staticmethod
+    def _merge_candidates(candidates: List[CandidateEntity]) -> List[CandidateEntity]:
+        merged_by_id: dict[str, CandidateEntity] = {}
+        for candidate in candidates:
             existing = merged_by_id.get(candidate.entity_id)
             if existing is None:
-                merged_by_id[candidate.entity_id] = boosted_candidate
+                merged_by_id[candidate.entity_id] = candidate
                 continue
-            if boosted_candidate.score > existing.score:
-                merged_by_id[candidate.entity_id] = boosted_candidate
+            if candidate.score > existing.score:
+                merged_by_id[candidate.entity_id] = candidate
                 continue
-            if boosted_candidate.source == "canonical-ready" and existing.source != "canonical-ready":
-                merged_by_id[candidate.entity_id] = boosted_candidate
+            if candidate.source == "canonical-ready" and existing.source != "canonical-ready":
+                merged_by_id[candidate.entity_id] = candidate
+        return list(merged_by_id.values())
+
+    @staticmethod
+    def _dedupe_canonical(candidates: List[CandidateEntity]) -> List[CandidateEntity]:
         canonical_clusters: dict[str, CandidateEntity] = {}
-        for item in sorted(merged_by_id.values(), key=lambda entry: entry.score, reverse=True):
+        for item in sorted(candidates, key=lambda entry: entry.score, reverse=True):
             cluster_key = normalize_for_match(item.name) or item.entity_id
             existing = canonical_clusters.get(cluster_key)
             if existing is None or item.score > existing.score:
                 canonical_clusters[cluster_key] = item
-        ranked = sorted(canonical_clusters.values(), key=lambda item: item.score, reverse=True)
-        return ranked[:20]
+        return list(canonical_clusters.values())
+
+    @staticmethod
+    def _select_representatives(candidates: List[CandidateEntity], limit: int = 20) -> List[CandidateEntity]:
+        ranked = sorted(candidates, key=lambda item: item.score, reverse=True)
+        return ranked[:limit]
 
     @staticmethod
     def to_related_nodes(candidates: list[CandidateEntity]) -> List[RelatedNodeItem]:

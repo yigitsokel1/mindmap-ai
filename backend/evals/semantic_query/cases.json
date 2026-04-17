@@ -140,6 +140,72 @@
       "case_type": "weak_signal",
       "expected_no_link": true,
       "expected_insight_presence": false
+    },
+    {
+      "id": "noisy-low-quality-sections",
+      "document_id": "doc-noisy-fragments",
+      "question": "What method is described in these noisy fragments?",
+      "expected_intent": "METHOD_USAGE",
+      "expected_entities": ["Fragmented RAG"],
+      "expected_sections": ["Unknown"],
+      "expected_citation_presence": false,
+      "expected_keywords": ["fragmented", "rag", "noisy"],
+      "expected_cross_document_hit": false,
+      "case_type": "noisy_section_parsing",
+      "expected_insight_presence": false
+    },
+    {
+      "id": "noisy-duplicate-passages",
+      "document_id": "doc-noisy-fragments",
+      "question": "Is there repeated passage evidence for fragmented rag?",
+      "expected_intent": "SUMMARY",
+      "expected_entities": ["Fragmented RAG"],
+      "expected_sections": ["Unknown"],
+      "expected_citation_presence": false,
+      "expected_keywords": ["repeated", "fragmented", "passage"],
+      "expected_cross_document_hit": false,
+      "case_type": "repeated_passage",
+      "expected_insight_presence": false
+    },
+    {
+      "id": "noisy-weak-citation-chain",
+      "document_id": "doc-citation-gap",
+      "question": "Which references back the synthetic contrastive approach claim?",
+      "expected_intent": "CITATION_BASIS",
+      "expected_entities": ["Synthetic Contrastive Approach"],
+      "expected_sections": ["Results"],
+      "expected_citation_presence": false,
+      "expected_keywords": ["references", "synthetic", "contrastive"],
+      "expected_cross_document_hit": false,
+      "case_type": "weak_citation_chain",
+      "expected_insight_presence": false
+    },
+    {
+      "id": "noisy-ambiguous-entity-mention",
+      "document_id": "doc-transformer",
+      "question": "How does trnsformer behave in this note?",
+      "expected_intent": "SUMMARY",
+      "expected_entities": [],
+      "expected_sections": ["Methods"],
+      "expected_citation_presence": false,
+      "expected_keywords": ["transformer"],
+      "expected_cross_document_hit": false,
+      "case_type": "ambiguous_entity_mention",
+      "expected_no_link": true,
+      "expected_insight_presence": false
+    },
+    {
+      "id": "noisy-sparse-evidence",
+      "document_id": "doc-noisy-fragments",
+      "question": "Any trend across documents for latency jitter?",
+      "expected_intent": "RELATION_LOOKUP",
+      "expected_entities": ["Latency Jitter"],
+      "expected_sections": [],
+      "expected_citation_presence": false,
+      "expected_keywords": ["latency", "jitter", "trend"],
+      "expected_cross_document_hit": false,
+      "case_type": "sparse_evidence",
+      "expected_insight_presence": false
     }
   ]
 }

@@ -164,71 +164,111 @@ export default function Inspector() {
                 )}
                 {Object.keys(contextDetails).length > 0 && (
                   <>
-                    {Array.isArray(
-                      (contextDetails.grouped_relations as { incoming?: unknown[] } | undefined)?.incoming
-                    ) && (
-                      <div className="mb-3">
-                        <p
-                          className="text-[10px] text-cyan-300 font-mono uppercase mb-1"
-                          data-testid="incoming-relations-heading"
-                        >
-                          Incoming Relations
-                        </p>
-                        {(
-                          contextDetails.grouped_relations as {
-                            incoming: Array<{ relation_type: string; count: number }>;
-                          }
-                        ).incoming.map(
-                          (group: { relation_type: string; count: number }) => (
-                            <p
-                              key={`incoming-${group.relation_type}`}
-                              className="text-[10px] text-white/70 font-mono"
-                            >
+                    <div className="mb-3 border border-white/10 rounded px-3 py-2 bg-black/20">
+                      <p className="text-[10px] text-cyan-300 font-mono uppercase mb-1" data-testid="inspector-summary-heading">
+                        Summary
+                      </p>
+                      <p className="text-[10px] text-white/70 font-mono">
+                        This explains the main role of the selected node in plain terms.
+                      </p>
+                      <p className="text-[11px] text-white/85 font-mono mt-2">
+                        {String(contextDetails.summary || nodeDetail?.summary || "No summary is available yet.")}
+                      </p>
+                    </div>
+                    <details className="mb-3 border border-white/10 rounded px-3 py-2 bg-black/20" open>
+                      <summary
+                        className="text-[10px] text-cyan-300 font-mono uppercase cursor-pointer"
+                        data-testid="inspector-canonical-panel-heading"
+                      >
+                        Canonical Panel
+                      </summary>
+                      <p className="text-[10px] text-white/70 font-mono mt-1">
+                        Canonical view shows whether this node is part of a broader shared concept.
+                      </p>
+                      {(contextDetails.linked_canonical_entity as Record<string, unknown> | undefined) ? (
+                        <div className="mt-2">
+                          <p className="text-[10px] text-white/80 font-mono">
+                            {String(
+                              (contextDetails.linked_canonical_entity as Record<string, unknown>).canonical_name ||
+                                "Unknown canonical"
+                            )}
+                          </p>
+                          <p className="text-[10px] text-white/60 font-mono">
+                            Appears in {Number(contextDetails.appears_in_documents || 0)} documents
+                          </p>
+                          {contextDetails.canonical_link_reason && (
+                            <p className="text-[10px] text-white/70 font-mono mt-1">
+                              Why linked: {String(contextDetails.canonical_link_reason)}
+                            </p>
+                          )}
+                          {typeof contextDetails.canonical_link_confidence === "number" && (
+                            <p className="text-[10px] text-white/70 font-mono">
+                              Link confidence: {(Number(contextDetails.canonical_link_confidence) * 100).toFixed(1)}%
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-[10px] text-white/50 font-mono mt-2">No canonical link is available.</p>
+                      )}
+                    </details>
+                    <details className="mb-3 border border-white/10 rounded px-3 py-2 bg-black/20" open>
+                      <summary
+                        className="text-[10px] text-cyan-300 font-mono uppercase cursor-pointer"
+                        data-testid="incoming-relations-heading"
+                      >
+                        Grouped Relations
+                      </summary>
+                      <p className="text-[10px] text-white/70 font-mono mt-1">
+                        Relations are grouped to reduce repeated lines and highlight patterns.
+                      </p>
+                      <div className="mt-2">
+                        <p className="text-[10px] text-cyan-200 font-mono uppercase mb-1">Incoming</p>
+                        {Array.isArray(
+                          (contextDetails.grouped_relations as { incoming?: unknown[] } | undefined)?.incoming
+                        ) ? (
+                          (
+                            contextDetails.grouped_relations as {
+                              incoming: Array<{ relation_type: string; count: number }>;
+                            }
+                          ).incoming.map((group: { relation_type: string; count: number }) => (
+                            <p key={`incoming-${group.relation_type}`} className="text-[10px] text-white/70 font-mono">
                               {group.relation_type} ({group.count})
                             </p>
-                          )
+                          ))
+                        ) : (
+                          <p className="text-[10px] text-white/50 font-mono">No incoming relations available.</p>
                         )}
                       </div>
-                    )}
-                    {!Array.isArray(
-                      (contextDetails.grouped_relations as { incoming?: unknown[] } | undefined)?.incoming
-                    ) && (
-                      <p className="text-[10px] text-white/50 font-mono mb-3">No incoming relations available.</p>
-                    )}
-                    {Array.isArray(
-                      (contextDetails.grouped_relations as { outgoing?: unknown[] } | undefined)?.outgoing
-                    ) && (
-                      <div className="mb-3">
+                      <div className="mt-2">
                         <p
-                          className="text-[10px] text-cyan-300 font-mono uppercase mb-1"
+                          className="text-[10px] text-cyan-200 font-mono uppercase mb-1"
                           data-testid="outgoing-relations-heading"
                         >
-                          Outgoing Relations
+                          Outgoing
                         </p>
-                        {(
-                          contextDetails.grouped_relations as {
-                            outgoing: Array<{ relation_type: string; count: number }>;
-                          }
-                        ).outgoing.map(
-                          (group: { relation_type: string; count: number }) => (
-                            <p
-                              key={`outgoing-${group.relation_type}`}
-                              className="text-[10px] text-white/70 font-mono"
-                            >
+                        {Array.isArray(
+                          (contextDetails.grouped_relations as { outgoing?: unknown[] } | undefined)?.outgoing
+                        ) ? (
+                          (
+                            contextDetails.grouped_relations as {
+                              outgoing: Array<{ relation_type: string; count: number }>;
+                            }
+                          ).outgoing.map((group: { relation_type: string; count: number }) => (
+                            <p key={`outgoing-${group.relation_type}`} className="text-[10px] text-white/70 font-mono">
                               {group.relation_type} ({group.count})
                             </p>
-                          )
+                          ))
+                        ) : (
+                          <p className="text-[10px] text-white/50 font-mono">No outgoing relations available.</p>
                         )}
                       </div>
-                    )}
-                    {!Array.isArray(
-                      (contextDetails.grouped_relations as { outgoing?: unknown[] } | undefined)?.outgoing
-                    ) && (
-                      <p className="text-[10px] text-white/50 font-mono mb-3">No outgoing relations available.</p>
-                    )}
+                    </details>
                     {Array.isArray(contextDetails.evidences) && (
-                      <div className="mb-3">
+                      <div className="mb-3 border border-white/10 rounded px-3 py-2 bg-black/20">
                         <p className="text-[10px] text-cyan-300 font-mono uppercase mb-1">Top Evidence Snippets</p>
+                        <p className="text-[10px] text-white/70 font-mono mb-1">
+                          These snippets are the strongest support for the selected node.
+                        </p>
                         {(contextDetails.evidences as Array<{ text: string }>)
                           .slice(0, 3)
                           .map((item: { text: string }, idx: number) => (
@@ -241,56 +281,29 @@ export default function Inspector() {
                     {!Array.isArray(contextDetails.evidences) && (
                       <p className="text-[10px] text-white/50 font-mono mb-3">No evidence snippets available.</p>
                     )}
-                    {Array.isArray(contextDetails.citations) && (
-                      <div className="mb-3">
-                        <p className="text-[10px] text-cyan-300 font-mono uppercase mb-1">Linked Citations</p>
-                        {(contextDetails.citations as Array<{ label?: string; title: string }>)
-                          .slice(0, 5)
-                          .map((item: { label?: string; title: string }, idx: number) => (
-                            <p key={`citation-${idx}`} className="text-[10px] text-white/70 font-mono">
-                              {item.label || item.title}
-                            </p>
-                          ))}
-                      </div>
-                    )}
-                    {!Array.isArray(contextDetails.citations) && (
-                      <p className="text-[10px] text-white/50 font-mono mb-3">No linked citations available.</p>
-                    )}
-                    {(contextDetails.linked_canonical_entity as Record<string, unknown> | undefined) && (
-                      <div className="mb-3">
-                        <p className="text-[10px] text-cyan-300 font-mono uppercase mb-1">Canonical Link</p>
-                        <p className="text-[10px] text-white/80 font-mono">
-                          {String(
-                            (
-                              contextDetails.linked_canonical_entity as Record<string, unknown>
-                            ).canonical_name || "Unknown canonical"
-                          )}
-                        </p>
-                        <p className="text-[10px] text-white/60 font-mono">
-                          Appears in {Number(contextDetails.appears_in_documents || 0)} documents
-                        </p>
-                        {contextDetails.canonical_link_reason && (
-                          <p className="text-[10px] text-white/70 font-mono mt-1">
-                            Why linked: {String(contextDetails.canonical_link_reason)}
-                          </p>
-                        )}
-                        {typeof contextDetails.canonical_link_confidence === "number" && (
-                          <p className="text-[10px] text-white/70 font-mono">
-                            Link confidence: {(Number(contextDetails.canonical_link_confidence) * 100).toFixed(1)}%
-                          </p>
-                        )}
-                        {Array.isArray(contextDetails.document_distribution) &&
-                          (contextDetails.document_distribution as Array<{ document: string; count: number }>)
-                            .slice(0, 3)
-                            .map((item, idx) => (
-                              <p key={`dist-${idx}`} className="text-[10px] text-white/60 font-mono">
-                                {item.document} ({item.count})
+                    <details className="mb-3 border border-white/10 rounded px-3 py-2 bg-black/20">
+                      <summary className="text-[10px] text-cyan-300 font-mono uppercase cursor-pointer">
+                        Citations
+                      </summary>
+                      <p className="text-[10px] text-white/70 font-mono mt-1">
+                        Citation links show where each claim can be verified in source materials.
+                      </p>
+                      {Array.isArray(contextDetails.citations) ? (
+                        <div className="mt-2">
+                          {(contextDetails.citations as Array<{ label?: string; title: string }>)
+                            .slice(0, 5)
+                            .map((item: { label?: string; title: string }, idx: number) => (
+                              <p key={`citation-${idx}`} className="text-[10px] text-white/70 font-mono">
+                                {item.label || item.title}
                               </p>
                             ))}
-                      </div>
-                    )}
+                        </div>
+                      ) : (
+                        <p className="text-[10px] text-white/50 font-mono mt-2">No linked citations available.</p>
+                      )}
+                    </details>
                     {canonicalAliases.length > 0 && (
-                        <div className="mb-3">
+                        <div className="mb-3 border border-white/10 rounded px-3 py-2 bg-black/20">
                           <p className="text-[10px] text-cyan-300 font-mono uppercase mb-1">Aliases</p>
                           <p className="text-[10px] text-white/70 font-mono">
                             {aliasVisible.join(", ")}
@@ -300,7 +313,7 @@ export default function Inspector() {
                       )}
                     {Array.isArray(contextDetails.top_related_documents) &&
                       (contextDetails.top_related_documents as string[]).length > 0 && (
-                        <div className="mb-3">
+                        <div className="mb-3 border border-white/10 rounded px-3 py-2 bg-black/20">
                           <p className="text-[10px] text-cyan-300 font-mono uppercase mb-1">Top Related Documents</p>
                           {(contextDetails.top_related_documents as string[]).slice(0, 5).map((doc, idx) => (
                             <p key={`related-doc-${idx}`} className="text-[10px] text-white/70 font-mono">
@@ -309,9 +322,14 @@ export default function Inspector() {
                           ))}
                         </div>
                       )}
-                    <pre className="text-[10px] text-white/60 font-mono whitespace-pre-wrap wrap-break-word">
-                      {JSON.stringify(contextDetails, null, 2)}
-                    </pre>
+                    <details className="border border-white/10 rounded px-3 py-2 bg-black/20">
+                      <summary className="text-[10px] text-cyan-300 font-mono uppercase cursor-pointer">
+                        Advanced Payload
+                      </summary>
+                      <pre className="text-[10px] text-white/60 font-mono whitespace-pre-wrap wrap-break-word mt-2">
+                        {JSON.stringify(contextDetails, null, 2)}
+                      </pre>
+                    </details>
                   </>
                 )}
                 {Object.keys(contextDetails).length === 0 && !isLoadingNodeDetail && !nodeDetailError && (

@@ -52,3 +52,16 @@ Use it after backend tests pass, and record pass/fail notes with timestamps.
 - [ ] Re-run the same semantic query and compare evidence ordering/shape consistency.
 - [ ] Confirm no unexpected explosive growth in duplicate nodes/edges.
 - [ ] Record any drift in confidence, evidence count, or citation count.
+
+## 8) Sprint 22 Product Polish Checks
+
+- [ ] Verify result panel hierarchy renders in order: Answer -> Key Points -> Insights -> Clustered Evidence -> Citations -> Advanced Reasoning Details.
+- [ ] Confirm low-confidence or overflow insights are moved into folded "Additional Insights" and default view stays readable.
+- [ ] Validate noisy cases do not overclaim: no cross-document trend from a single weak mention.
+- [ ] Confirm insight panel opens with concise product-language helper copy (no heavy technical jargon).
+- [ ] Confirm clustered evidence fallback message appears when evidence exists but clustering is empty.
+- [ ] Confirm canonical panel appears as second-layer inspector block and does not hide local node summary.
+- [ ] Confirm grouped relations and citations remain collapsible/expandable without losing content.
+- [ ] Run smoke flow with backend enabled and verify: query -> answer + insights + clustered evidence.
+- [ ] Verify inspector smoke flow: summary and canonical panel are visible after entity inspect.
+- [ ] Verify citation click opens provenance context and inspector label is set to Citation.
