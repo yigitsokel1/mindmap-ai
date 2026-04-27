@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { FileText, Upload, Loader2 } from "lucide-react";
+import { FileText, Upload, Loader2, ExternalLink } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
 import { API_ENDPOINTS } from "../lib/constants";
 import { resolveDocumentDisplayName } from "../lib/documentLabel";
-import { fetchJson, fetchSemanticGraph, getPresetFilters, toUserMessage } from "../lib/api";
+import { fetchJson, fetchSemanticGraph, getSemanticFilters, toUserMessage } from "../lib/api";
 import type { Document, GraphNode, IngestJobStatus } from "../lib/types";
 
 const INGEST_STAGE_LABELS: Record<IngestJobStatus["stage"], string> = {
@@ -48,11 +48,12 @@ export default function FileLibrary() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const openPDFViewer = useAppStore((state) => state.openPDFViewer);
   const setSelectedDocumentId = useAppStore((state) => state.setSelectedDocumentId);
+  const selectedDocumentId = useAppStore((state) => state.selectedDocumentId);
   const requestGraphRefresh = useAppStore((state) => state.requestGraphRefresh);
 
   const refreshDocuments = async () => {
     const data = await fetchSemanticGraph(
-      getPresetFilters("semantic", {
+      getSemanticFilters({
         node_types: ["Document"],
         include_structural: true,
         include_evidence: false,
@@ -65,18 +66,23 @@ export default function FileLibrary() {
       data.nodes.forEach((node: GraphNode) => {
         const nodeType = node.label || node.type;
         if (nodeType === "Document" && node.id) {
+          const uid = (node.properties?.uid as string | undefined) || "";
+          if (!uid) {
+            return;
+          }
           const fileName = node.properties?.file_name as string | undefined;
           const title = node.properties?.title as string | undefined;
           const displayName = resolveDocumentDisplayName(
             fileName,
             title,
-            prettifyDocumentId(node.id)
+            prettifyDocumentId(uid)
           );
           const resolvedFileName = fileName || (node.properties?.saved_file_name as string | undefined) || "";
 
           if (!docMap.has(node.id)) {
             docMap.set(node.id, {
               id: node.id,
+              document_uid: uid,
               name: resolvedFileName,
               label: displayName,
             });
@@ -145,7 +151,18 @@ export default function FileLibrary() {
       xhr.addEventListener("load", async () => {
         try {
           if (xhr.status < 200 || xhr.status >= 300) {
-            throw new Error(`Upload failed: ${xhr.status} ${xhr.statusText}`);
+            let backendDetail = "";
+            try {
+              const parsed = JSON.parse(xhr.responseText) as { detail?: string };
+              if (parsed?.detail) {
+                backendDetail = ` - ${parsed.detail}`;
+              }
+            } catch {
+              if (xhr.responseText?.trim()) {
+                backendDetail = ` - ${xhr.responseText.slice(0, 300)}`;
+              }
+            }
+            throw new Error(`Upload failed: ${xhr.status} ${xhr.statusText}${backendDetail}`);
           }
 
           const result = JSON.parse(xhr.responseText) as {
@@ -230,13 +247,17 @@ export default function FileLibrary() {
     throw new Error("Ingestion status polling timed out.");
   };
 
-  const handleDocClick = (doc: Document) => {
+  const handleSelectDocument = (doc: Document) => {
+    setSelectedDocumentId(doc.document_uid || null);
+  };
+
+  const handleOpenDocument = (doc: Document) => {
     if (!doc.name) {
       setUploadError("This document does not have a downloadable file name.");
       return;
     }
     const pdfUrl = API_ENDPOINTS.STATIC(doc.name);
-    setSelectedDocumentId(doc.id);
+    setSelectedDocumentId(doc.document_uid || null);
     openPDFViewer(pdfUrl, resolveDocumentDisplayName(doc.name, doc.label, doc.id), 1);
   };
 
@@ -253,18 +274,22 @@ export default function FileLibrary() {
           <div className="text-center py-8 space-y-2">
             <p className="text-xs text-white/70 font-mono">No documents yet</p>
             <p className="text-[10px] text-white/50 font-mono">
-              Upload a PDF to build the graph, then ask evidence-backed questions from the Query tab.
+              Upload a PDF to build the graph, then ask evidence-backed questions below.
             </p>
           </div>
         ) : (
           documents.map((doc) => (
             <div
               key={doc.id}
-              onClick={() => handleDocClick(doc)}
-              className="flex items-center gap-3 p-3 rounded-lg border border-white/10 bg-black/20 hover:bg-white/5 hover:border-white/15 cursor-pointer transition-all"
+              onClick={() => handleSelectDocument(doc)}
+              className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                selectedDocumentId === (doc.document_uid || null)
+                  ? "border-cyan-400/70 bg-cyan-500/10"
+                  : "border-white/10 bg-black/20 hover:bg-white/5 hover:border-white/15"
+              }`}
             >
               {/* File Icon */}
-              <FileText className="w-5 h-5 text-white/60 flex-shrink-0" />
+              <FileText className="w-5 h-5 text-white/60 shrink-0" />
 
               {/* File Info */}
               <div className="flex-1 min-w-0">
@@ -277,6 +302,20 @@ export default function FileLibrary() {
                   </p>
                 )}
               </div>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleOpenDocument(doc);
+                }}
+                className="px-2 py-1 text-[10px] font-mono rounded border border-white/20 text-white/80 hover:bg-white/10"
+                title="Open PDF"
+              >
+                <span className="inline-flex items-center gap-1">
+                  <ExternalLink className="w-3 h-3" />
+                  Open
+                </span>
+              </button>
             </div>
           ))
         )}
@@ -294,7 +333,7 @@ export default function FileLibrary() {
         )}
         <label className="block cursor-pointer">
           <div className="relative group">
-            <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/20 via-purple-500/20 to-cyan-500/20 rounded-xl opacity-0 group-hover:opacity-100 blur-xl transition-opacity" />
+            <div className="absolute inset-0 bg-linear-to-r from-cyan-500/20 via-purple-500/20 to-cyan-500/20 rounded-xl opacity-0 group-hover:opacity-100 blur-xl transition-opacity" />
             <div className="relative flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-white/10 bg-black/40 hover:bg-white/5 transition-all group-hover:border-cyan-500/30 group-hover:shadow-[0_0_20px_rgba(0,243,255,0.3)]">
               {isUploading ? (
                 <>

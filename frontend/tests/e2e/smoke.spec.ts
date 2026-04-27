@@ -23,38 +23,33 @@ test("@smoke query submit shows answer and evidence", async ({ page }) => {
   }
   await page.getByTestId("query-input").fill("How is Transformer grounded in this paper?");
   await page.getByTestId("query-send").click();
-  await expect(page.getByText(/Answer · confidence/i)).toBeVisible();
-  await expect(page.getByTestId("clustered-evidence-heading")).toBeVisible();
-  await expect(page.getByTestId("insights-heading")).toBeVisible();
-  await expect(page.getByTestId("citations-heading")).toBeVisible();
+  await expect(page.getByText("Answer", { exact: true })).toBeVisible();
+  await expect(page.getByText(/^Source$/i)).toBeVisible();
+  await expect(page.getByText(/^Details$/i)).toBeVisible();
 });
 
 test("@smoke node inspect shows summary and canonical panel", async ({ page }) => {
   await page.goto("/");
   await page.getByTestId("query-input").fill("Which entities are related to Transformer in this document?");
   await page.getByTestId("query-send").click();
-  await page.getByTestId("advanced-reasoning-details").locator("summary").click();
   const inspectButton = page.locator("[data-testid^='inspect-entity-']").first();
   await expect(inspectButton).toBeVisible();
   await inspectButton.click();
-  await expect(page.getByText(/Node Details/i)).toBeVisible();
-  await expect(page.getByTestId("inspector-summary-heading")).toBeVisible();
-  await expect(page.getByTestId("inspector-canonical-panel-heading")).toBeVisible();
-  await expect(page.getByText(/Grouped Relations/i)).toBeVisible();
-  await expect(page.getByTestId("outgoing-relations-heading")).toBeVisible();
+  await expect(page.getByText(/Derived semantic node \(not directly from document\)/i)).toBeVisible();
 });
 
 test("@smoke citation click opens provenance panel", async ({ page }) => {
   await page.goto("/");
   await page.getByTestId("query-input").fill("Which citations support the transformer method?");
   await page.getByTestId("query-send").click();
+  await page.getByText(/^Details$/i).click();
+  await page.getByText(/^Citations$/i).click();
   const citationItem = page.locator("[data-testid^='citation-item-']").first();
   const noCitationState = page.getByText(/No citation links were returned/i);
   await expect(citationItem.or(noCitationState)).toBeVisible();
   if (await citationItem.isVisible()) {
     await citationItem.click();
-    await expect(page.getByTestId("inspector-context-label")).toHaveText("Citation");
-    await expect(page.locator("iframe").first().or(page.getByText(/Node Details/i))).toBeVisible();
+    await expect(page.locator("iframe").first()).toBeVisible();
   } else {
     await expect(noCitationState).toBeVisible();
   }

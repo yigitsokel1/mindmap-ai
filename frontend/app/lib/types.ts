@@ -2,8 +2,6 @@
  * Shared frontend contracts for semantic graph UI.
  */
 
-export type GraphPreset = "semantic" | "evidence" | "citation";
-
 export type SemanticNodeType =
   | "Document"
   | "Section"
@@ -71,6 +69,7 @@ export interface GraphFilters {
 
 export interface Document {
   id: string;
+  document_uid?: string;
   name: string;
   label?: string;
   created_at?: string;
@@ -81,6 +80,8 @@ export interface NodeContext {
   label: string;
   title: string;
   shortDescription?: string;
+  documentUid?: string;
+  documentFileName?: string;
   documentName?: string;
   page?: number;
   rawText?: string;
@@ -112,6 +113,8 @@ export interface NodeEvidenceItem {
   text: string;
   passage_id: string;
   document_id: string;
+  document_name?: string | null;
+  page?: number | null;
   section?: string | null;
   score?: number | null;
 }
@@ -133,6 +136,7 @@ export interface NodeDetail {
   type: string;
   name: string;
   summary: string;
+  metadata: Record<string, string | number | boolean | null>;
   relations: {
     incoming: NodeRelationItem[];
     outgoing: NodeRelationItem[];
@@ -164,6 +168,7 @@ export interface SemanticEvidenceItem {
   document_name?: string | null;
   citation_label?: string | null;
   reference_entry_id?: string | null;
+  cluster_key?: string | null;
 }
 
 export interface SemanticCitationItem {
@@ -210,6 +215,9 @@ export interface SemanticQueryResponse {
   matched_entities: SemanticRelatedNode[];
   evidence: SemanticEvidenceItem[];
   related_nodes: SemanticRelatedNode[];
+  primary_focus_node_id?: string | null;
+  secondary_focus_node_ids?: string[];
+  focus_seed_ids?: string[];
   citations: SemanticCitationItem[];
   explanation: SemanticExplanation;
   key_points?: string[];

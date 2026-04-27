@@ -3,7 +3,7 @@
 ## Purpose
 MindMap-AI extracts semantic entities, relations, and provenance from documents, stores them in Neo4j, and serves grounded query answers plus graph/inspector experiences.
 
-This overview is the single canonical reference for runtime architecture before Sprint 19 cross-document canonical linking.
+This overview is the canonical runtime reference after Sprint 19-22 delivery (canonical linking, evidence clustering, insight synthesis, and frontend interaction refresh).
 
 ## Core Layers
 - **API Layer**: request validation and transport (`/api/ingest`, `/api/query/semantic`, `/api/graph/semantic`, `/api/graph/node/{id}`).
@@ -50,9 +50,11 @@ Deterministic IDs:
 3. `TraversalPlanner` decides traversal/evidence budget.
 4. `SemanticQueryReader` collects evidence records.
 5. `EvidenceRanker` scores and ranks.
-6. `AnswerComposer` shapes answer text + guardrails.
-7. `ExplanationBuilder` assembles reasoning metadata.
-8. Response is returned with matched entities, evidence, citations, and confidence.
+6. `EvidenceClusterer` groups evidence around stable relation/entity patterns.
+7. `InsightBuilder` derives reusable high-confidence insights from clusters.
+8. `AnswerComposer` shapes answer text + guardrails.
+9. `ExplanationBuilder` assembles reasoning metadata.
+10. Response returns matched entities, clustered evidence, insights, citations, and confidence metadata.
 
 ## Legacy Quarantine
 - Legacy ingestion/retrieval compatibility paths remain isolated under legacy namespaces and compatibility routers.
@@ -67,8 +69,30 @@ Deterministic IDs:
 - **Eval runner**: semantic quality and grounded-answer checks.
 - **Smoke checks**: semantic query, node detail, citation/provenance navigation.
 
-## Canonical Linking Direction (Sprint 19)
-- Add canonical lookup reads behind reader contracts (`read_canonical_lookup_candidates` and query-reader lookup hooks).
-- Extend `CandidateEntity` source semantics (`local`, `canonical-ready`, `alias`) without changing API response shape.
-- Keep `SemanticQueryService` orchestration-only while canonical resolution/scoring evolves in selector/reader modules.
-- Keep writer interfaces stable so canonical link writes can target dedicated writers without re-centralizing `GraphWriter`.
+Latest verification snapshot (2026-04-27):
+- Backend tests: pass (`76 passed`).
+- Frontend unit tests: pass (`4 passed`).
+- Frontend e2e smoke: pass (`6 passed`).
+- Semantic eval completed but acceptance quality thresholds are not yet met (intent and citation quality below target; high false-positive/hallucination indicators remain).
+
+## Sprint 19-22 Delivery Notes
+- **Sprint 19 (Canonical linking live)**:
+  - Canonical linking is active in candidate resolution and graph writes (`CanonicalEntity` + linker/writer flow).
+  - Candidate source semantics are stable (`local`, `canonical-ready`, `alias`) and consumed by query orchestration.
+- **Sprint 20 (Compatibility cleanup)**:
+  - Compatibility-only surfaces were reduced; canonical API paths remain the primary client contract.
+  - Dead/duplicate frontend endpoint constants and legacy-facing usage were trimmed from active paths.
+- **Sprint 21 (Grounding quality uplift)**:
+  - Evidence clustering + insight synthesis were added to the query pipeline.
+  - Response contract now supports `clusters`, `insights`, and richer uncertainty signaling.
+- **Sprint 22 (Product readiness UI pass)**:
+  - Command center, inspector, and semantic graph interaction loops were streamlined around:
+    - source-first answer display,
+    - inspector node detail drill-down,
+    - graph focus/highlight synchronization from query results.
+
+## Frontend Runtime Interaction (Sprint 22)
+- `CommandCenter` drives semantic query submission and receives grounded response payloads.
+- Query results set graph focus seeds and highlighted nodes through shared store state.
+- `SemanticGraphViewer` uses this focus model to bias camera/selection and scoped rendering.
+- `Inspector` resolves node detail (`/api/graph/node/{id}`), surfaces summaries/metadata, and opens source PDF context when available.

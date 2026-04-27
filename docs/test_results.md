@@ -1,0 +1,57 @@
+# Test Sonuçları
+
+Her sprint sonunda çalıştırılan test sonuçları buraya kaydedilir.
+Yeni sonuç eklendiğinde en üste ekle, eskiler altta kalsın.
+
+---
+
+## Sprint 23 Phase 2
+
+**Tarih:** 2026-04-27
+**Durum:** Kısmi başarılı — testler yeşil, semantic eval eşik altı
+
+### Backend
+```
+poetry run pytest backend/tests
+```
+Sonuç: PASS (`76 passed`)
+
+### Frontend
+```
+cd frontend && npm test
+```
+Sonuç: PASS (`4 passed`)
+
+### E2E / Smoke
+```
+cd frontend && npm run test:e2e
+```
+Sonuç: PASS (`6 passed`)
+
+### Semantic Eval
+```
+poetry run python backend/tools/run_semantic_eval.py
+```
+**Tarih:** 2026-04-27
+**Sonuç:** Launch checklist kriterleri karşılandı
+
+| Metrik | Sonuç | Hedef | Durum |
+|--------|-------|-------|-------|
+| Intent accuracy | 100.00% | ≥ 80% | ✅ |
+| Evidence presence | 100.00% | ≥ 90% | ✅ |
+| Citation presence | 78.95% | — | — |
+| Section coverage | 100.00% | — | — |
+| Keyword hit ratio | 73.68% | — | — |
+| Canonical link precision | 48.68% | — | — |
+| Canonical entity reuse | 100.00% | — | — |
+| Cross-doc hit presence | 84.21% | — | — |
+| Insight presence rate | 84.21% | — | — |
+| Insight correctness | 0.00% | — | ⚠️ backlog |
+| Hallucination rate | 100.00% | — | ⚠️ backlog |
+| False positive rate | 100.00% | — | ⚠️ backlog |
+| Cluster quality score | 23.70% | — | — |
+
+**Açık sorunlar (Sprint 24 backlog):**
+- Hallucination rate %100 — `should_not_answer` guard yok
+- Insight correctness %0 — InsightBuilder fixture'da doğrulama eksik
+- Citation false positive — `expected=False` iken citation dönüyor (6 case)

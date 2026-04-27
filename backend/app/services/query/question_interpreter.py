@@ -70,11 +70,17 @@ class QuestionInterpreter:
     def _detect_intent(self, text: str) -> str:
         if any(term in text for term in ("citation", "cited", "reference", "refs", "bibliography")):
             return "CITATION_BASIS"
-        if any(term in text for term in ("method", "algorithm", "approach", "technique", "architecture")):
+        # "how is/does X used/use" → method question even without explicit method keyword
+        if re.search(r"\bhow\b.+\buse[sd]?\b", text):
+            return "METHOD_USAGE"
+        if any(term in text for term in ("method", "algorithm", "approach", "technique")):
+            return "METHOD_USAGE"
+        # "architecture" only triggers METHOD_USAGE when "how" is present; otherwise too broad
+        if "architecture" in text and "how" in text:
             return "METHOD_USAGE"
         if any(term in text for term in ("problem", "challenge", "limitation", "issue", "bottleneck")):
             return "PROBLEM"
-        if any(term in text for term in ("relation", "related", "connect", "link", "between")):
+        if any(term in text for term in ("relation", "related", "connect", "link", "between", "equivalent", "trend")):
             return "RELATION_LOOKUP"
         return "SUMMARY"
 

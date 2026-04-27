@@ -1,0 +1,44 @@
+---
+name: mindmap-ai
+description: MindMap-AI proje kuralları
+---
+
+# Başlamadan önce — her oturumda oku
+
+Sırayla şu dosyaları oku:
+1. `docs/status.md` — nerede olduğunu anla
+2. `docs/architecture.md` — neye dokunabileceğini anla  
+3. `docs/workflow.md` — çalışma kurallarını anla
+
+Okumadan kod yazma.
+
+# Canonical belgeler (karar almadan önce bak)
+
+| Konu | Dosya |
+|------|-------|
+| Graph pattern (en yetkili) | `docs/graph_contract.md` |
+| Mimari & servisler | `docs/architecture.md` |
+| Entity/relation tipleri | `docs/ontology_v1.md` |
+| Extraction I/O | `docs/extraction_contract.md` |
+
+Çelişki olursa bu sıra geçerli. `graph_storage_model.md` henüz güncel değil — ona bakma.
+
+# Kesin kurallar
+
+## Dokunma listesi
+- `backend/app/legacy/` → dokunma
+- `frontend/app/legacy/` → dokunma
+- `docs/deprecated/` → referans alma
+- `domain/identity.py` → değiştirme
+- `schemas/` → değiştirmeden önce frontend etkisini düşün
+
+## Scope
+- Sadece isteneni yap
+- "Bunu da eklesek iyi olur" deme
+- Yeni node/relation tipi → önce docs/architecture.md'ye ekle, sonra kodu yaz
+- Schema değişikliği → backend + frontend aynı anda
+
+## Oturum sonu
+Kod yazdıktan sonra:
+1. docs/status.md'yi güncelle
+2. Yeni servis eklediysen docs/architecture.md'yi güncelle

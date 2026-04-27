@@ -1,7 +1,5 @@
-import { API_ENDPOINTS, PRESET_FILTERS } from "./constants";
-import type { GraphFilters, GraphPreset, GraphRenderData, GraphResponse } from "./types";
-
-const DEFAULT_GRAPH_PRESET: GraphPreset = "semantic";
+import { API_ENDPOINTS, DEFAULT_SEMANTIC_FILTERS } from "./constants";
+import type { GraphFilters, GraphRenderData, GraphResponse } from "./types";
 
 function buildGraphUrl(filters: GraphFilters): string {
   const base =
@@ -55,6 +53,7 @@ export function stableGraphFilterKey(filters: GraphFilters): string {
 export interface FetchSemanticGraphOptions {
   bypassDocumentFilter?: boolean;
   traceLabel?: string;
+  forceRefresh?: boolean;
 }
 
 const inFlightGraphRequests = new Map<string, Promise<GraphResponse>>();
@@ -123,12 +122,9 @@ export async function fetchJson<T>(url: string, init?: RequestInit, timeoutMs = 
   }
 }
 
-export function getPresetFilters(
-  preset: GraphPreset = DEFAULT_GRAPH_PRESET,
-  overrides?: GraphFilters
-): GraphFilters {
+export function getSemanticFilters(overrides?: GraphFilters): GraphFilters {
   return {
-    ...PRESET_FILTERS[preset],
+    ...DEFAULT_SEMANTIC_FILTERS,
     ...overrides,
   };
 }
@@ -140,7 +136,7 @@ export async function fetchSemanticGraph(
   const effectiveFilters = options.bypassDocumentFilter ? withoutDocumentFilter(filters) : filters;
   const key = stableGraphFilterKey(effectiveFilters);
   const now = Date.now();
-  const cached = graphResponseCache.get(key);
+  const cached = options.forceRefresh ? undefined : graphResponseCache.get(key);
   if (cached && cached.expiresAt > now) {
     if (options.traceLabel) {
       console.debug(`[graph-trace:${options.traceLabel}] cache-hit`, {
@@ -152,7 +148,7 @@ export async function fetchSemanticGraph(
     return cached.data;
   }
 
-  const active = inFlightGraphRequests.get(key);
+  const active = options.forceRefresh ? undefined : inFlightGraphRequests.get(key);
   if (active) {
     return active;
   }

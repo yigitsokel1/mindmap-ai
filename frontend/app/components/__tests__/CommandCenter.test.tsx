@@ -6,14 +6,13 @@ describe("CommandCenter", () => {
   beforeEach(() => {
     useAppStore.setState({
       isCommandCenterOpen: true,
-      activeTab: "query",
       selectedDocumentId: null,
       highlightedNodeIds: [],
       selectedNodeContext: null,
     });
   });
 
-  it("renders primary answer, insights, and collapsed evidence/citation sections", async () => {
+  it("renders compact answer, source, and details sections", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
@@ -34,6 +33,9 @@ describe("CommandCenter", () => {
             },
           ],
           related_nodes: [{ id: "n-1", type: "Method", display_name: "Transformer" }],
+          primary_focus_node_id: "n-1",
+          secondary_focus_node_ids: ["ri-2"],
+          focus_seed_ids: ["n-1", "ri-2"],
           citations: [{ label: "[12]", document_name: "paper.pdf", page: 3 }],
           explanation: {
             why_these_entities: ["entity"],
@@ -57,11 +59,16 @@ describe("CommandCenter", () => {
     });
     fireEvent.click(screen.getByTitle("Send"));
 
-    await waitFor(() => expect(screen.getByText(/Grounded answer/i)).toBeInTheDocument());
-    expect(screen.getByText("Key Points")).toBeInTheDocument();
-    expect(screen.getByTestId("insights-heading")).toBeInTheDocument();
-    expect(screen.getByTestId("clustered-evidence-heading")).toBeInTheDocument();
-    expect(screen.getByText("Citations (collapsed)")).toBeInTheDocument();
-    expect(screen.getByText("Advanced Reasoning Details")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByText(/Grounded answer/i).length).toBeGreaterThan(0));
+    expect(screen.getByText("Source")).toBeInTheDocument();
+    expect(screen.getByTestId("primary-source-button")).toBeInTheDocument();
+    expect(screen.getByText("Details")).toBeInTheDocument();
+    expect(screen.getByText("Citations")).toBeInTheDocument();
+    expect(screen.getByText("Matched Entities")).toBeInTheDocument();
+    const highlightedNodeIds = useAppStore.getState().highlightedNodeIds;
+    expect(useAppStore.getState().primaryFocusNodeId).toBe("n-1");
+    expect(useAppStore.getState().secondaryFocusNodeIds).toContain("ri-2");
+    expect(highlightedNodeIds).toContain("n-1");
+    expect(highlightedNodeIds).toContain("ri-2");
   });
 });

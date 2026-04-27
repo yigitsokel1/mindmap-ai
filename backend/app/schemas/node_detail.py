@@ -15,6 +15,8 @@ class NodeEvidenceItem(BaseModel):
     text: str
     passage_id: str
     document_id: str
+    document_name: Optional[str] = None
+    page: Optional[int] = None
     section: Optional[str] = None
     score: Optional[float] = None
 

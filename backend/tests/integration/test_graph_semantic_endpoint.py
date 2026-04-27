@@ -23,7 +23,15 @@ class FakeGraphReader:
                 incoming=[{"relation_type": "SUPPORTED_BY", "count": 1, "items": []}],
                 outgoing=[{"relation_type": "USES", "count": 2, "items": []}],
             ),
-            evidences=[{"text": "evidence snippet", "passage_id": "p-1", "document_id": "doc-1"}],
+            evidences=[
+                {
+                    "text": "evidence snippet",
+                    "passage_id": "p-1",
+                    "document_id": "doc-1",
+                    "document_name": "paper_a.pdf",
+                    "page": 3,
+                }
+            ],
             citations=[{"title": "Ref", "label": "[1]"}],
             linked_canonical_entity={"uid": "canonical_method:transformer", "canonical_name": "Transformer"},
             canonical_aliases=["transformer architecture"],
@@ -73,6 +81,15 @@ def test_graph_semantic_endpoint_document_filter_passthrough(api_client, monkeyp
     response = api_client.get("/api/graph/semantic?document_id=doc-42")
     assert response.status_code == 200
     assert FakeGraphReader.last_filters.document_id == "doc-42"
+
+
+def test_graph_semantic_endpoint_document_filter_element_id_passthrough(api_client, monkeypatch):
+    import backend.app.api.graph as graph_api
+
+    monkeypatch.setattr(graph_api, "SemanticGraphReader", FakeGraphReader)
+    response = api_client.get("/api/graph/semantic?document_id=4:abc-def:19")
+    assert response.status_code == 200
+    assert FakeGraphReader.last_filters.document_id == "4:abc-def:19"
 
 
 def test_graph_node_detail_endpoint_contract(api_client, monkeypatch):

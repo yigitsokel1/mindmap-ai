@@ -1,3 +1,5 @@
+import logging
+
 from backend.app.schemas.graph_response import GraphEdge
 from backend.app.services.query.semantic_graph_reader import SemanticGraphFilters, SemanticGraphReader
 from backend.app.schemas.node_detail import (
@@ -19,6 +21,7 @@ class FakeNode:
 
 def test_read_graph_shapes_nodes_edges_and_meta(monkeypatch):
     reader = object.__new__(SemanticGraphReader)
+    reader.logger = logging.getLogger("test.semantic_graph_reader")
     reader.BASE_NODE_TYPES = SemanticGraphReader.BASE_NODE_TYPES
     reader.STRUCTURAL_NODE_TYPES = SemanticGraphReader.STRUCTURAL_NODE_TYPES
     reader.EVIDENCE_NODE_TYPES = SemanticGraphReader.EVIDENCE_NODE_TYPES
@@ -28,7 +31,8 @@ def test_read_graph_shapes_nodes_edges_and_meta(monkeypatch):
     node_a = FakeNode("n1", ["Method"], {"canonical_name": "Transformer"})
     node_b = FakeNode("n2", ["Concept"], {"name": "Attention"})
     monkeypatch.setattr(reader, "_load_nodes", lambda *_args, **_kwargs: [{"n": node_a}, {"n": node_b}])
-    monkeypatch.setattr(reader, "_load_edges", lambda _node_ids: [
+    monkeypatch.setattr(reader, "_load_in_scope_node_ids", lambda _node_ids, _document_id: set(_node_ids))
+    monkeypatch.setattr(reader, "_load_edges", lambda _node_ids, in_scope_node_ids=None: [
         GraphEdge(id="r1", source="n1", target="n2", type="USES", properties={"confidence": 0.9})
     ])
 
@@ -44,7 +48,8 @@ def test_read_graph_shapes_nodes_edges_and_meta(monkeypatch):
     assert len(result.nodes) == 2
     assert result.nodes[0].display_name in {"Transformer", "Attention"}
     assert len(result.edges) == 1
-    assert result.meta.counts == {"nodes": 2, "edges": 1}
+    assert result.meta.counts["nodes"] == 2
+    assert result.meta.counts["edges"] == 1
     assert result.meta.filters_applied["document_id"] == "doc-1"
 
 
@@ -70,13 +75,15 @@ def test_resolve_labels_applies_filters_and_include_flags():
 
 def test_read_graph_empty_result_keeps_contract(monkeypatch):
     reader = object.__new__(SemanticGraphReader)
+    reader.logger = logging.getLogger("test.semantic_graph_reader")
     reader.BASE_NODE_TYPES = SemanticGraphReader.BASE_NODE_TYPES
     reader.STRUCTURAL_NODE_TYPES = SemanticGraphReader.STRUCTURAL_NODE_TYPES
     reader.EVIDENCE_NODE_TYPES = SemanticGraphReader.EVIDENCE_NODE_TYPES
     reader.CITATION_NODE_TYPES = SemanticGraphReader.CITATION_NODE_TYPES
     reader.SUPPORTED_NODE_TYPES = SemanticGraphReader.SUPPORTED_NODE_TYPES
     monkeypatch.setattr(reader, "_load_nodes", lambda *_args, **_kwargs: [])
-    monkeypatch.setattr(reader, "_load_edges", lambda _node_ids: [])
+    monkeypatch.setattr(reader, "_load_in_scope_node_ids", lambda _node_ids, _document_id: set())
+    monkeypatch.setattr(reader, "_load_edges", lambda _node_ids, in_scope_node_ids=None: [])
 
     result = reader.read_graph(
         SemanticGraphFilters(
@@ -89,7 +96,8 @@ def test_read_graph_empty_result_keeps_contract(monkeypatch):
     )
     assert result.nodes == []
     assert result.edges == []
-    assert result.meta.counts == {"nodes": 0, "edges": 0}
+    assert result.meta.counts["nodes"] == 0
+    assert result.meta.counts["edges"] == 0
 
 
 def test_read_node_detail_shapes_contract(monkeypatch):

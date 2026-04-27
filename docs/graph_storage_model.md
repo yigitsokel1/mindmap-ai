@@ -15,7 +15,7 @@ Source of truth for traversal contracts: `docs/graph_contract.md`.
 
 1. **MERGE for semantic entities** — Use `MERGE` on `canonical_name` to prevent duplicate nodes. `CREATE` only for structural nodes (Document, Section, Passage) and Evidence nodes (always unique).
 
-2. **Evidence as nodes, not edge properties** — Provenance metadata lives in separate Evidence nodes linked via `FROM_PASSAGE` edges. Semantic edges carry only `evidence_uids` as a list property.
+2. **Evidence as nodes via reified relations** — Provenance metadata lives in `Evidence` nodes linked to `RelationInstance` via `SUPPORTS` and to `Passage` via `FROM_PASSAGE`.
 
 3. **Structural edges are propertyless** (except `ordinal`) — No provenance needed for `HAS_SECTION` / `HAS_PASSAGE`.
 
@@ -184,27 +184,32 @@ Source of truth for traversal contracts: `docs/graph_contract.md`.
 | `HAS_INLINE_CITATION` | Passage → InlineCitation | — | Structural citation anchor |
 | `REFERS_TO` | InlineCitation → ReferenceEntry | `confidence: Float` | Link from mention to parsed bibliography entry |
 
-### Semantic Relationships
+### Reified Semantic Relationship Pattern (`:RelationInstance`)
 
-All semantic relationships carry `evidence_uids` — a list of Evidence node UIDs that support this relation.
+Semantic relations are represented as nodes (`:RelationInstance`) rather than direct typed edges between entities.
+This follows the canonical chain in `docs/graph_contract.md`:
 
-| Type | Source → Target | Properties |
-|------|----------------|------------|
-| `WROTE` | Author → Document | `evidence_uids: List[String]` |
-| `AFFILIATED_WITH` | Author → Institution | `evidence_uids: List[String]` |
-| `MENTIONS` | Document → Concept | `evidence_uids: List[String]` |
-| `INTRODUCES` | Document → Method | `evidence_uids: List[String]` |
-| `USES` | Method → Dataset/Method | `evidence_uids: List[String]` |
-| `EVALUATED_ON` | Method → Task | `evidence_uids: List[String]` |
-| `MEASURED_BY` | Task → Metric | `evidence_uids: List[String]` |
-| `ABOUT` | Document → Task | `evidence_uids: List[String]` |
+- `(:Entity)-[:OUT_REL]->(:RelationInstance)`
+- `(:RelationInstance)-[:TO]->(:Entity)`
+- `(:Evidence)-[:SUPPORTS]->(:RelationInstance)`
 
-### Provenance Relationships
+`RelationInstance` stores relation semantics as node properties.
 
 | Type | Source → Target | Properties | Notes |
 |------|----------------|------------|-------|
+| `OUT_REL` | Entity → RelationInstance | — | Connects source entity to reified relation instance |
+| `TO` | RelationInstance → Entity | — | Connects relation instance to target entity |
+| `SUPPORTS` | Evidence → RelationInstance | — | Provenance support for this relation assertion |
 | `FROM_PASSAGE` | Evidence → Passage | — | Where the evidence was found |
-| `IDENTIFIES` | Evidence → (any semantic node) | — | Which entity was identified |
+
+`RelationInstance` property shape:
+
+| Property | Neo4j Type | Constraint | Description |
+|----------|-----------|------------|-------------|
+| `uid` | String | UNIQUE | Primary key (UUID) |
+| `type` | String | INDEX | Canonical relation type (e.g., `WROTE`, `USES`) |
+| `confidence` | Float | — | Optional aggregate confidence for the asserted relation |
+| `created_at` | DateTime | — | Relation instance creation timestamp |
 
 ---
 
@@ -326,14 +331,17 @@ MERGE (m:Method {canonical_name: "Transformer"})
          THEN m.surface_forms + $surface_form
          ELSE m.surface_forms END
 
-// 2. Create the semantic edge with evidence reference
+// 2. Create a reified relation instance between source and target entities
 MATCH (d:Document {uid: $doc_uid})
-MERGE (d)-[r:INTRODUCES]->(m)
-  ON CREATE SET r.evidence_uids = [$ev_uid]
-  ON MATCH SET r.evidence_uids =
-    CASE WHEN NOT $ev_uid IN r.evidence_uids
-         THEN r.evidence_uids + $ev_uid
-         ELSE r.evidence_uids END
+MERGE (ri:RelationInstance {uid: $ri_uid})
+  ON CREATE SET ri.type = "INTRODUCES",
+                ri.source_uid = d.uid,
+                ri.target_uid = m.uid,
+                ri.confidence = $confidence,
+                ri.created_at = datetime()
+  ON MATCH SET ri.confidence = $confidence
+MERGE (d)-[:OUT_REL]->(ri)
+MERGE (ri)-[:TO]->(m)
 
 // 3. Create the Evidence node
 CREATE (e:Evidence {
@@ -346,22 +354,23 @@ CREATE (e:Evidence {
   surface_text: $surface_text
 })
 
-// 4. Link evidence to passage and entity
+// 4. Link evidence to relation instance and passage
 MATCH (p:Passage {uid: $pass_uid})
+MATCH (ri:RelationInstance {uid: $ri_uid})
 CREATE (e)-[:FROM_PASSAGE]->(p)
-CREATE (e)-[:IDENTIFIES]->(m)
+CREATE (e)-[:SUPPORTS]->(ri)
 ```
 
 ### Multi-Evidence
 
 When the same relation is supported by multiple passages (e.g., "Transformer" is mentioned in sections 1, 3, and 5):
 
-Each passage extraction creates a new Evidence node. The semantic edge accumulates `evidence_uids`:
+Each passage extraction creates a new Evidence node linked to the same `RelationInstance`:
 
 ```cypher
 // After second extraction from a different passage
-MATCH (d:Document {uid: $doc_uid})-[r:INTRODUCES]->(m:Method {canonical_name: "Transformer"})
-SET r.evidence_uids = r.evidence_uids + $new_ev_uid
+MATCH (d:Document {uid: $doc_uid})-[:OUT_REL]->(ri:RelationInstance {uid: $ri_uid})-[:TO]->(m:Method {canonical_name: "Transformer"})
+SET ri.confidence = $new_confidence
 
 CREATE (e:Evidence {
   uid: $new_ev_uid,
@@ -374,7 +383,7 @@ CREATE (e:Evidence {
 })
 MATCH (p:Passage {uid: $different_pass_uid})
 CREATE (e)-[:FROM_PASSAGE]->(p)
-CREATE (e)-[:IDENTIFIES]->(m)
+CREATE (e)-[:SUPPORTS]->(ri)
 ```
 
 ### Confidence Aggregation
@@ -382,12 +391,12 @@ CREATE (e)-[:IDENTIFIES]->(m)
 When a relation has multiple Evidence nodes, the effective confidence can be computed:
 
 ```cypher
-// Aggregate confidence for a relation
-MATCH (d:Document {uid: $doc_uid})-[r:INTRODUCES]->(m:Method)
-UNWIND r.evidence_uids AS ev_uid
-MATCH (e:Evidence {uid: ev_uid})
-WITH m, collect(e.confidence) AS confidences
+// Aggregate confidence for a relation instance
+MATCH (d:Document {uid: $doc_uid})-[:OUT_REL]->(ri:RelationInstance)-[:TO]->(m:Method)
+MATCH (e:Evidence)-[:SUPPORTS]->(ri)
+WITH m, ri, collect(e.confidence) AS confidences
 RETURN m.canonical_name,
+       ri.type AS relation_type,
        reduce(max = 0.0, c IN confidences | CASE WHEN c > max THEN c ELSE max END) AS max_confidence,
        reduce(sum = 0.0, c IN confidences | sum + c) / size(confidences) AS avg_confidence,
        size(confidences) AS evidence_count
@@ -461,10 +470,11 @@ CALL {
 ### 3. Query: All Methods in a Document with Evidence
 
 ```cypher
-MATCH (d:Document {uid: $doc_uid})-[r:INTRODUCES]->(m:Method)
-UNWIND r.evidence_uids AS ev_uid
-MATCH (e:Evidence {uid: ev_uid})-[:FROM_PASSAGE]->(p:Passage)
+MATCH (d:Document {uid: $doc_uid})-[:OUT_REL]->(ri:RelationInstance {type: "INTRODUCES"})-[:TO]->(m:Method)
+MATCH (e:Evidence)-[:SUPPORTS]->(ri)-[:TO]->(m)
+MATCH (e)-[:FROM_PASSAGE]->(p:Passage)
 RETURN m.canonical_name AS method,
+       ri.type AS relation_type,
        m.description AS description,
        e.confidence AS confidence,
        e.surface_text AS evidence,
@@ -475,14 +485,12 @@ ORDER BY e.confidence DESC
 ### 4. Query: Full Provenance Trace
 
 ```cypher
-// Trace any semantic edge back to its source
-MATCH (src)-[r]->(tgt)
-WHERE type(r) IN ["WROTE", "AFFILIATED_WITH", "MENTIONS", "INTRODUCES",
-                   "USES", "EVALUATED_ON", "MEASURED_BY", "ABOUT"]
-  AND $ev_uid IN r.evidence_uids
-MATCH (e:Evidence {uid: $ev_uid})-[:FROM_PASSAGE]->(p:Passage)<-[:HAS_PASSAGE]-(s:Section)<-[:HAS_SECTION]-(d:Document)
+// Trace any reified semantic relation back to its source
+MATCH (e:Evidence {uid: $ev_uid})-[:SUPPORTS]->(ri:RelationInstance)
+MATCH (src)-[:OUT_REL]->(ri)-[:TO]->(tgt)
+MATCH (e)-[:FROM_PASSAGE]->(p:Passage)<-[:HAS_PASSAGE]-(s:Section)<-[:HAS_SECTION]-(d:Document)
 RETURN labels(src)[0] AS source_type, src.canonical_name AS source_name,
-       type(r) AS relation,
+       ri.type AS relation,
        labels(tgt)[0] AS target_type, tgt.canonical_name AS target_name,
        e.confidence AS confidence,
        e.surface_text AS evidence_text,
@@ -494,21 +502,19 @@ RETURN labels(src)[0] AS source_type, src.canonical_name AS source_name,
 ### 5. Query: Graph for Visualization
 
 ```cypher
-// Fetch all semantic nodes and their relationships for rendering
+// Fetch all semantic nodes and their reified relationships for rendering
 MATCH (n)
 WHERE n:Author OR n:Institution OR n:Concept OR n:Method
    OR n:Dataset OR n:Metric OR n:Task OR n:Document
-OPTIONAL MATCH (n)-[r]-(m)
-WHERE type(r) IN ["WROTE", "AFFILIATED_WITH", "MENTIONS", "INTRODUCES",
-                   "USES", "EVALUATED_ON", "MEASURED_BY", "ABOUT"]
-RETURN n, r, m
+OPTIONAL MATCH (n)-[:OUT_REL]->(ri:RelationInstance)-[:TO]->(m)
+RETURN n, ri, m
 LIMIT 5000
 ```
 
 ### 6. Query: Documents About a Task
 
 ```cypher
-MATCH (d:Document)-[:ABOUT]->(t:Task {canonical_name: $task_name})
+MATCH (d:Document)-[:OUT_REL]->(:RelationInstance {type: "ABOUT"})-[:TO]->(t:Task {canonical_name: $task_name})
 RETURN d.uid, d.title, d.year
 ORDER BY d.year DESC
 ```
@@ -516,19 +522,25 @@ ORDER BY d.year DESC
 ### 7. Query: Entity Neighborhood (1-hop)
 
 ```cypher
-MATCH (center {canonical_name: $entity_name})-[r]-(neighbor)
-WHERE type(r) IN ["WROTE", "AFFILIATED_WITH", "MENTIONS", "INTRODUCES",
-                   "USES", "EVALUATED_ON", "MEASURED_BY", "ABOUT"]
+MATCH (center {canonical_name: $entity_name})
+OPTIONAL MATCH (center)-[:OUT_REL]->(ri_out:RelationInstance)-[:TO]->(neighbor_out)
+OPTIONAL MATCH (neighbor_in)-[:OUT_REL]->(ri_in:RelationInstance)-[:TO]->(center)
+WITH center,
+     collect({relation: ri_out.type, neighbor: neighbor_out}) +
+     collect({relation: ri_in.type, neighbor: neighbor_in}) AS rows
+UNWIND rows AS row
+WITH center, row
+WHERE row.neighbor IS NOT NULL
 RETURN labels(center)[0] AS center_type, center.canonical_name AS center,
-       type(r) AS relation,
-       labels(neighbor)[0] AS neighbor_type,
-       COALESCE(neighbor.canonical_name, neighbor.title) AS neighbor_name
+       row.relation AS relation,
+       labels(row.neighbor)[0] AS neighbor_type,
+       COALESCE(row.neighbor.canonical_name, row.neighbor.title) AS neighbor_name
 ```
 
 ### 8. Delete Document and All Related Data
 
 ```cypher
-// Cascade delete: document -> sections -> passages -> evidence + semantic edges
+// Cascade delete: document -> sections -> passages -> evidence + relation instances
 MATCH (d:Document {uid: $doc_uid})
 
 // Delete evidence linked to this document
@@ -539,7 +551,7 @@ DETACH DELETE e
 OPTIONAL MATCH (d)-[:HAS_SECTION]->(s:Section)-[:HAS_PASSAGE]->(p:Passage)
 DETACH DELETE p, s
 
-// Delete document (and its semantic edges)
+// Delete document (and its OUT_REL links)
 DETACH DELETE d
 
 // Note: Semantic entities (Method, Concept, etc.) are NOT deleted
@@ -570,7 +582,7 @@ MATCH (c:Chunk) DETACH DELETE c
 
 - **MERGE on canonical_name**: Requires INDEX on `canonical_name` for each semantic label. Without these indexes, MERGE performance degrades linearly with node count.
 
-- **evidence_uids list growth**: For highly-cited entities, `evidence_uids` lists may grow large. If a single edge has > 100 evidence UIDs, consider archiving old evidence or using a separate evidence index.
+- **High-support relation fan-in**: For heavily supported facts, many `Evidence` nodes may point to one `RelationInstance`. If support count grows very large, consider archival/partitioning strategies.
 
 - **Passage text storage**: Full passage text is stored in Passage nodes. For very large documents, this can consume significant heap. Consider external text storage (file reference) for documents with 1000+ passages.
 

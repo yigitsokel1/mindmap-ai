@@ -48,6 +48,11 @@ def _build_semantic_graph(
 ) -> GraphResponse:
     """Build semantic graph response with active semantic reader."""
     started_at = time.perf_counter()
+    if document_id and ":" in document_id:
+        logger.warning(
+            "graph_api.legacy_document_id_received document_id=%s expected=document_uid",
+            document_id,
+        )
     try:
         reader = SemanticGraphReader()
         filters = SemanticGraphFilters(

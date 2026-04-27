@@ -186,10 +186,10 @@ def test_semantic_query_service_handles_nodes_without_evidence(monkeypatch):
     result = service.answer(SemanticQueryRequest(question="what evidence supports transformer"))
 
     assert result.evidence == []
-    assert "no supporting evidence" in result.answer.lower()
+    assert result.answer == "No grounded answer found in the current documents."
     assert result.limited_evidence is True
     assert result.uncertainty_signal is True
-    assert result.uncertainty_reason == "no_evidence"
+    assert result.uncertainty_reason == "no_evidence_hard_gate"
 
 
 def test_semantic_query_service_handles_no_matches(monkeypatch):
@@ -207,7 +207,7 @@ def test_semantic_query_service_handles_no_matches(monkeypatch):
     service = SemanticQueryService()
     result = service.answer(SemanticQueryRequest(question="zzzz"))
 
-    assert result.answer.startswith("No semantic grounding found")
+    assert result.answer == "No grounded answer found in the current documents."
     assert result.evidence == []
     assert result.related_nodes == []
     assert result.matched_entities == []
@@ -215,7 +215,7 @@ def test_semantic_query_service_handles_no_matches(monkeypatch):
     assert result.confidence == 0
     assert result.limited_evidence is True
     assert result.uncertainty_signal is True
-    assert result.uncertainty_reason == "no_evidence"
+    assert result.uncertainty_reason == "no_evidence_hard_gate"
 
 
 def test_semantic_query_service_flags_missing_citation_basis(monkeypatch):

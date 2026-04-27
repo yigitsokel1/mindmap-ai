@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import Inspector from "../Inspector";
 import { useAppStore } from "../../store/useAppStore";
 
@@ -11,11 +11,13 @@ describe("Inspector", () => {
         id: "n-1",
         label: "Method",
         title: "Transformer",
+        documentName: "paper.pdf",
+        page: 3,
       },
     });
   });
 
-  it("renders grouped relations and summary from node detail", async () => {
+  it("renders semantic context with source and open action", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
@@ -42,16 +44,84 @@ describe("Inspector", () => {
     );
 
     render(<Inspector />);
-    await waitFor(() => expect(screen.getAllByText("Node summary").length).toBeGreaterThan(0));
-    expect(screen.getByText("Quick View")).toBeInTheDocument();
-    fireEvent.click(screen.getByText("Expand details"));
-    expect(screen.getByText("Grouped Relations")).toBeInTheDocument();
-    expect(screen.getByText("Incoming")).toBeInTheDocument();
-    expect(screen.getByText("Outgoing")).toBeInTheDocument();
-    expect(screen.getByText("Top Evidence Snippets")).toBeInTheDocument();
-    expect(screen.getByText("Citations")).toBeInTheDocument();
-    expect(screen.getByText("Canonical Importance")).toBeInTheDocument();
-    expect(screen.getByText("Why this matters")).toBeInTheDocument();
-    expect(screen.getByText("Aliases")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByText("paper.pdf · page 3").length).toBeGreaterThan(0));
+    expect(screen.getByText("Source")).toBeInTheDocument();
+    expect(screen.getAllByText("Node summary").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /open pdf/i })).toBeInTheDocument();
+  });
+
+  it("derives source from node evidences when context source is missing", async () => {
+    useAppStore.setState({
+      isPDFViewerOpen: false,
+      selectedDocumentId: "doc-1",
+      selectedNodeContext: {
+        id: "n-2",
+        label: "Method",
+        title: "Fallback Node",
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          id: "n-2",
+          type: "Method",
+          name: "Fallback Node",
+          summary: "Node summary",
+          metadata: {},
+          relations: { incoming: [], outgoing: [] },
+          grouped_relations: { incoming: [], outgoing: [] },
+          evidences: [
+            {
+              text: "fallback snippet",
+              passage_id: "p-2",
+              document_id: "doc-1",
+              document_name: "fallback.pdf",
+              page: 7,
+            },
+          ],
+          citations: [],
+        }),
+      })
+    );
+
+    render(<Inspector />);
+    await waitFor(() => expect(screen.getByText("fallback.pdf · page 7")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /open pdf/i })).toBeInTheDocument();
+  });
+
+  it("shows derived semantic fallback when no source exists", async () => {
+    useAppStore.setState({
+      isPDFViewerOpen: false,
+      selectedDocumentId: "doc-1",
+      selectedNodeContext: {
+        id: "n-3",
+        label: "Concept",
+        title: "Derived Concept",
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          id: "n-3",
+          type: "Concept",
+          name: "Derived Concept",
+          summary: "",
+          metadata: {},
+          relations: { incoming: [], outgoing: [] },
+          grouped_relations: { incoming: [], outgoing: [] },
+          evidences: [],
+          citations: [],
+        }),
+      })
+    );
+
+    render(<Inspector />);
+    await waitFor(() =>
+      expect(screen.getByText("Derived semantic node (not directly from document)")).toBeInTheDocument()
+    );
   });
 });

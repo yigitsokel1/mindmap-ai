@@ -89,6 +89,9 @@ class SemanticQueryAnswer(BaseModel):
     matched_entities: List[MatchedEntityItem] = Field(default_factory=list)
     evidence: List[SemanticEvidenceItem] = Field(default_factory=list)
     related_nodes: List[RelatedNodeItem] = Field(default_factory=list)
+    primary_focus_node_id: Optional[str] = None
+    secondary_focus_node_ids: List[str] = Field(default_factory=list)
+    focus_seed_ids: List[str] = Field(default_factory=list)
     citations: List[CitationItem] = Field(default_factory=list)
     explanation: QueryExplanation = Field(default_factory=QueryExplanation)
     key_points: List[str] = Field(default_factory=list)

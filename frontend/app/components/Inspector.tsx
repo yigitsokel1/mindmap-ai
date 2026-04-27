@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, FileText, Loader2, AlertTriangle } from "lucide-react";
+import { X, FileText, Loader2, AlertTriangle, ExternalLink } from "lucide-react";
 import { API_ENDPOINTS } from "../lib/constants";
 import { fetchJson, toUserMessage } from "../lib/api";
 import type { NodeDetail } from "../lib/types";
@@ -14,6 +14,7 @@ export default function Inspector() {
     pdfUrl,
     pdfDocName,
     pdfPage,
+    openPDFViewer,
     closePDFViewer,
     selectedNodeContext,
     setSelectedNodeContext,
@@ -23,22 +24,18 @@ export default function Inspector() {
   const [isLoadingNodeDetail, setIsLoadingNodeDetail] = useState(false);
   const [nodeDetailError, setNodeDetailError] = useState<string | null>(null);
   const contextDetails = ((nodeDetail || selectedNodeContext?.details || {}) as Record<string, unknown>);
-  const canonicalAliases = Array.isArray(contextDetails.canonical_aliases)
-    ? (contextDetails.canonical_aliases as string[])
-    : [];
-  const aliasVisible = canonicalAliases.slice(0, 6);
-  const aliasHiddenCount = Math.max(
-    0,
-    Number(contextDetails.canonical_alias_count || canonicalAliases.length) - aliasVisible.length
-  );
-  const relationLoad =
-    ((contextDetails.grouped_relations as { incoming?: unknown[]; outgoing?: unknown[] } | undefined)?.incoming?.length || 0) +
-    ((contextDetails.grouped_relations as { incoming?: unknown[]; outgoing?: unknown[] } | undefined)?.outgoing?.length || 0);
-  const evidenceCount = Array.isArray(contextDetails.evidences) ? contextDetails.evidences.length : 0;
-  const citationCount = Array.isArray(contextDetails.citations) ? contextDetails.citations.length : 0;
-  const importanceScore = relationLoad + evidenceCount + citationCount * 2;
-  const importanceLevel = importanceScore >= 10 ? "High" : importanceScore >= 5 ? "Medium" : "Low";
-  const [expandedDetails, setExpandedDetails] = useState(false);
+  const summaryText = String(contextDetails.summary || nodeDetail?.summary || "");
+  const semanticType = nodeDetail?.type || selectedNodeContext?.label || "Node";
+  const semanticName = nodeDetail?.name || selectedNodeContext?.title || "Untitled node";
+  const metadataEntries = Object.entries(nodeDetail?.metadata || {}).filter(([, value]) => value !== null && value !== "");
+  const firstEvidence = nodeDetail?.evidences?.[0];
+  const fallbackSourceDocument = firstEvidence?.document_name || undefined;
+  const fallbackSourcePage = firstEvidence?.page;
+  const fallbackSourceSnippet = firstEvidence?.text || undefined;
+  const sourceDocument = selectedNodeContext?.documentName || fallbackSourceDocument;
+  const sourcePage = selectedNodeContext?.page ?? fallbackSourcePage;
+  const sourceSnippet = selectedNodeContext?.rawText || fallbackSourceSnippet;
+  const hasSource = Boolean(sourceDocument);
 
   useEffect(() => {
     const contextId = selectedNodeContext?.id;
@@ -46,7 +43,12 @@ export default function Inspector() {
       setNodeDetail(null);
       return;
     }
-    const scopedDocumentId = selectedNodeContext?.label === "Citation" ? selectedDocumentId || undefined : undefined;
+    const scopedDocumentId =
+      selectedNodeContext?.label === "Citation" ||
+      selectedNodeContext?.label === "InlineCitation" ||
+      selectedNodeContext?.label === "ReferenceEntry"
+        ? selectedDocumentId || undefined
+        : undefined;
     let cancelled = false;
     const loadNodeDetail = async () => {
       setIsLoadingNodeDetail(true);
@@ -80,6 +82,7 @@ export default function Inspector() {
   const pdfUrlWithPage: string | undefined = pdfUrl
     ? (pdfPage ? `${pdfUrl}#page=${pdfPage}` : pdfUrl)
     : undefined;
+  const canOpenPdfFromContext = hasSource;
 
   return (
     <AnimatePresence>
@@ -96,9 +99,7 @@ export default function Inspector() {
             <div className="flex items-center gap-2 min-w-0 flex-1">
               <FileText className="w-4 h-4 text-cyan-400 shrink-0" />
               <div className="min-w-0 flex-1">
-                <p className="text-xs font-mono font-semibold text-white/90 truncate">
-                  {pdfDocName || "DOCUMENT"}
-                </p>
+                <p className="text-xs font-mono font-semibold text-white/90 truncate">{pdfDocName || semanticName}</p>
                 {pdfPage && (
                   <p className="text-[10px] text-white/50 font-mono mt-0.5">
                     PAGE {pdfPage}
@@ -118,34 +119,6 @@ export default function Inspector() {
             </button>
           </div>
 
-          {selectedNodeContext && (
-            <div className="px-4 py-3 border-b border-white/10 bg-black/30">
-              <p
-                className="text-[10px] text-cyan-300 uppercase font-mono tracking-wide"
-                data-testid="inspector-context-label"
-              >
-                {selectedNodeContext.label}
-              </p>
-              <p className="text-xs text-white/90 font-mono mt-1">{selectedNodeContext.title}</p>
-              {selectedNodeContext.documentName && (
-                <p className="text-[10px] text-white/60 font-mono mt-1">
-                  {selectedNodeContext.documentName}
-                  {selectedNodeContext.page ? ` · page ${selectedNodeContext.page}` : ""}
-                </p>
-              )}
-              {(contextDetails.summary || nodeDetail?.summary) && (
-                <p className="text-[11px] text-white/80 font-mono mt-2 leading-relaxed">
-                  {String(contextDetails.summary || nodeDetail?.summary)}
-                </p>
-              )}
-              {selectedNodeContext.shortDescription && (
-                <p className="text-[11px] text-white/75 font-mono mt-2 leading-relaxed">
-                  {selectedNodeContext.shortDescription}
-                </p>
-              )}
-            </div>
-          )}
-
           {/* PDF Content */}
           <div className="flex-1 overflow-hidden bg-black/20 rounded-b-2xl">
             {pdfUrl ? (
@@ -156,13 +129,10 @@ export default function Inspector() {
               />
             ) : selectedNodeContext ? (
               <div className="h-full overflow-y-auto p-4">
-                <p className="text-[10px] text-white/50 font-mono mb-2 uppercase tracking-wide">
-                  Node Details
-                </p>
                 {isLoadingNodeDetail && (
                   <div className="mb-3 flex items-center gap-2 text-[10px] text-cyan-300 font-mono">
                     <Loader2 className="w-3 h-3 animate-spin" />
-                    Loading node detail...
+                    Loading source context...
                   </div>
                 )}
                 {nodeDetailError && (
@@ -171,209 +141,57 @@ export default function Inspector() {
                     {nodeDetailError}
                   </div>
                 )}
-                {selectedNodeContext.rawText && (
-                  <p className="text-xs text-white/80 font-mono leading-relaxed mb-3">
-                    {selectedNodeContext.rawText}
+                <div className="border border-white/10 rounded px-3 py-3 bg-black/20">
+                  <p className="text-[10px] text-cyan-300 uppercase tracking-wide font-mono" data-testid="inspector-context-label">
+                    {semanticType}
                   </p>
-                )}
-                {Object.keys(contextDetails).length > 0 && (
-                  <>
-                    <div className="mb-3 border border-white/10 rounded px-3 py-2 bg-black/20">
-                      <p className="text-[10px] text-cyan-300 font-mono uppercase mb-1">Quick View</p>
-                      <p className="text-[10px] text-white/70 font-mono">Type: {selectedNodeContext.label}</p>
-                      <p className="text-[10px] text-white/70 font-mono">
-                        {selectedNodeContext.shortDescription || String(contextDetails.summary || "No short description available.")}
-                      </p>
-                      <button
-                        onClick={() => setExpandedDetails((prev) => !prev)}
-                        className="mt-2 text-[10px] px-2 py-1 rounded border border-white/20 text-white/80 hover:bg-white/10 font-mono"
-                      >
-                        {expandedDetails ? "Hide details" : "Expand details"}
-                      </button>
-                    </div>
-                    {evidenceCount === 0 && citationCount === 0 && (
-                      <div className="mb-3 border border-amber-500/40 rounded px-3 py-2 bg-amber-500/10">
-                        <p className="text-[10px] text-amber-200 font-mono">
-                          This node is structural and not useful for answering queries.
+                  <p className="text-sm text-white/90 font-mono mt-2">{semanticName}</p>
+                </div>
+                <p className="mt-3 text-[11px] text-white/80 font-mono leading-relaxed">
+                  {summaryText || selectedNodeContext.shortDescription || "Semantic explanation is not available for this node yet."}
+                </p>
+                {metadataEntries.length > 0 && (
+                  <div className="mt-3 border border-white/10 rounded px-3 py-3 bg-black/20">
+                    <p className="text-[10px] uppercase tracking-wide text-cyan-300 font-mono">Metadata</p>
+                    <div className="mt-2 space-y-1">
+                      {metadataEntries.map(([key, value]) => (
+                        <p key={key} className="text-[10px] text-white/75 font-mono break-all">
+                          {key}: {String(value)}
                         </p>
-                      </div>
-                    )}
-                    {expandedDetails && (
-                      <>
-                    <div className="mb-3 border border-white/10 rounded px-3 py-2 bg-black/20">
-                      <p className="text-[10px] text-cyan-300 font-mono uppercase mb-1" data-testid="inspector-summary-heading">
-                        Summary
-                      </p>
-                      <p className="text-[10px] text-white/70 font-mono">
-                        This explains the main role of the selected node in plain terms.
-                      </p>
-                      <p className="text-[11px] text-white/85 font-mono mt-2">
-                        {String(contextDetails.summary || nodeDetail?.summary || "No summary is available yet.")}
-                      </p>
+                      ))}
                     </div>
-                    <details className="mb-3 border border-white/10 rounded px-3 py-2 bg-black/20" open>
-                      <summary
-                        className="text-[10px] text-cyan-300 font-mono uppercase cursor-pointer"
-                        data-testid="inspector-canonical-panel-heading"
-                      >
-                        Canonical Importance
-                      </summary>
-                      <p className="text-[10px] text-white/70 font-mono mt-1">
-                        Importance in graph: {importanceLevel} ({importanceScore} signal points)
+                  </div>
+                )}
+                <div className="mt-3 border border-white/10 rounded px-3 py-3 bg-black/20">
+                  <p className="text-[10px] uppercase tracking-wide text-cyan-300 font-mono">Source</p>
+                  {hasSource && sourceDocument ? (
+                    <>
+                      <p className="text-[11px] text-white/80 font-mono mt-2">
+                        {sourceDocument}
+                        {sourcePage ? ` · page ${sourcePage}` : ""}
                       </p>
-                      {(contextDetails.linked_canonical_entity as Record<string, unknown> | undefined) ? (
-                        <div className="mt-2">
-                          <p className="text-[10px] text-white/80 font-mono">
-                            {String(
-                              (contextDetails.linked_canonical_entity as Record<string, unknown>).canonical_name ||
-                                "Unknown canonical"
-                            )}
-                          </p>
-                          <p className="text-[10px] text-white/60 font-mono">
-                            Appears in {Number(contextDetails.appears_in_documents || 0)} documents
-                          </p>
-                          {contextDetails.canonical_link_reason && (
-                            <p className="text-[10px] text-white/70 font-mono mt-1">
-                              Why linked: {String(contextDetails.canonical_link_reason)}
-                            </p>
-                          )}
-                        </div>
-                      ) : (
-                        <p className="text-[10px] text-white/50 font-mono mt-2">No canonical link is available.</p>
+                      {sourceSnippet && (
+                        <p className="text-[11px] text-white/70 font-mono mt-2 leading-relaxed">{sourceSnippet}</p>
                       )}
-                    </details>
-                    <div className="mb-3 border border-white/10 rounded px-3 py-2 bg-black/20">
-                      <p className="text-[10px] text-cyan-300 font-mono uppercase mb-1">Why this matters</p>
-                      <p className="text-[10px] text-white/75 font-mono">
-                        This node matters because it connects {relationLoad} relation groups, has {evidenceCount} evidence snippets, and {citationCount} citation links. Higher counts usually mean this concept is central to grounded answers.
-                      </p>
-                    </div>
-                    <details className="mb-3 border border-white/10 rounded px-3 py-2 bg-black/20" open>
-                      <summary
-                        className="text-[10px] text-cyan-300 font-mono uppercase cursor-pointer"
-                        data-testid="incoming-relations-heading"
-                      >
-                        Grouped Relations
-                      </summary>
-                      <p className="text-[10px] text-white/70 font-mono mt-1">
-                        Relations are grouped to reduce repeated lines and highlight patterns.
-                      </p>
-                      <div className="mt-2">
-                        <p className="text-[10px] text-cyan-200 font-mono uppercase mb-1">Incoming</p>
-                        {Array.isArray(
-                          (contextDetails.grouped_relations as { incoming?: unknown[] } | undefined)?.incoming
-                        ) ? (
-                          (
-                            contextDetails.grouped_relations as {
-                              incoming: Array<{ relation_type: string; count: number }>;
-                            }
-                          ).incoming.map((group: { relation_type: string; count: number }) => (
-                            <p key={`incoming-${group.relation_type}`} className="text-[10px] text-white/70 font-mono">
-                              {group.relation_type} ({group.count})
-                            </p>
-                          ))
-                        ) : (
-                          <p className="text-[10px] text-white/50 font-mono">No incoming relations available.</p>
-                        )}
-                      </div>
-                      <div className="mt-2">
-                        <p
-                          className="text-[10px] text-cyan-200 font-mono uppercase mb-1"
-                          data-testid="outgoing-relations-heading"
+                      {canOpenPdfFromContext && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            openPDFViewer(API_ENDPOINTS.STATIC(sourceDocument), sourceDocument, sourcePage || 1)
+                          }
+                          className="mt-3 inline-flex items-center gap-1 px-2 py-1 text-[10px] rounded border border-white/20 text-white/80 hover:bg-white/10 font-mono"
                         >
-                          Outgoing
-                        </p>
-                        {Array.isArray(
-                          (contextDetails.grouped_relations as { outgoing?: unknown[] } | undefined)?.outgoing
-                        ) ? (
-                          (
-                            contextDetails.grouped_relations as {
-                              outgoing: Array<{ relation_type: string; count: number }>;
-                            }
-                          ).outgoing.map((group: { relation_type: string; count: number }) => (
-                            <p key={`outgoing-${group.relation_type}`} className="text-[10px] text-white/70 font-mono">
-                              {group.relation_type} ({group.count})
-                            </p>
-                          ))
-                        ) : (
-                          <p className="text-[10px] text-white/50 font-mono">No outgoing relations available.</p>
-                        )}
-                      </div>
-                    </details>
-                    {Array.isArray(contextDetails.evidences) && (
-                      <div className="mb-3 border border-white/10 rounded px-3 py-2 bg-black/20">
-                        <p className="text-[10px] text-cyan-300 font-mono uppercase mb-1">Top Evidence Snippets</p>
-                        <p className="text-[10px] text-white/70 font-mono mb-1">
-                          These snippets are the strongest support for the selected node.
-                        </p>
-                        {(contextDetails.evidences as Array<{ text: string }>)
-                          .slice(0, 3)
-                          .map((item: { text: string }, idx: number) => (
-                            <p key={`evidence-${idx}`} className="text-[10px] text-white/70 font-mono mb-1">
-                              {item.text}
-                            </p>
-                          ))}
-                      </div>
-                    )}
-                    {!Array.isArray(contextDetails.evidences) && (
-                      <p className="text-[10px] text-white/50 font-mono mb-3">No evidence snippets available.</p>
-                    )}
-                    <details className="mb-3 border border-white/10 rounded px-3 py-2 bg-black/20">
-                      <summary className="text-[10px] text-cyan-300 font-mono uppercase cursor-pointer">
-                        Citations
-                      </summary>
-                      <p className="text-[10px] text-white/70 font-mono mt-1">
-                        Citation links show where each claim can be verified in source materials.
-                      </p>
-                      {Array.isArray(contextDetails.citations) ? (
-                        <div className="mt-2">
-                          {(contextDetails.citations as Array<{ label?: string; title: string }>)
-                            .slice(0, 5)
-                            .map((item: { label?: string; title: string }, idx: number) => (
-                              <p key={`citation-${idx}`} className="text-[10px] text-white/70 font-mono">
-                                {item.label || item.title}
-                              </p>
-                            ))}
-                        </div>
-                      ) : (
-                        <p className="text-[10px] text-white/50 font-mono mt-2">No linked citations available.</p>
+                          <ExternalLink className="w-3 h-3" />
+                          Open PDF
+                        </button>
                       )}
-                    </details>
-                    {canonicalAliases.length > 0 && (
-                        <div className="mb-3 border border-white/10 rounded px-3 py-2 bg-black/20">
-                          <p className="text-[10px] text-cyan-300 font-mono uppercase mb-1">Aliases</p>
-                          <p className="text-[10px] text-white/70 font-mono">
-                            {aliasVisible.join(", ")}
-                            {aliasHiddenCount > 0 ? ` +${aliasHiddenCount} more` : ""}
-                          </p>
-                        </div>
-                      )}
-                    {Array.isArray(contextDetails.top_related_documents) &&
-                      (contextDetails.top_related_documents as string[]).length > 0 && (
-                        <div className="mb-3 border border-white/10 rounded px-3 py-2 bg-black/20">
-                          <p className="text-[10px] text-cyan-300 font-mono uppercase mb-1">Top Related Documents</p>
-                          {(contextDetails.top_related_documents as string[]).slice(0, 5).map((doc, idx) => (
-                            <p key={`related-doc-${idx}`} className="text-[10px] text-white/70 font-mono">
-                              {doc}
-                            </p>
-                          ))}
-                        </div>
-                      )}
-                    <details className="border border-white/10 rounded px-3 py-2 bg-black/20">
-                      <summary className="text-[10px] text-cyan-300 font-mono uppercase cursor-pointer">
-                        Advanced Payload
-                      </summary>
-                      <pre className="text-[10px] text-white/60 font-mono whitespace-pre-wrap wrap-break-word mt-2">
-                        {JSON.stringify(contextDetails, null, 2)}
-                      </pre>
-                    </details>
                     </>
-                    )}
-                  </>
-                )}
-                {Object.keys(contextDetails).length === 0 && !isLoadingNodeDetail && !nodeDetailError && (
-                  <p className="text-[10px] text-white/50 font-mono">No detail payload is available for this node.</p>
-                )}
+                  ) : (
+                    <p className="text-[11px] text-white/75 font-mono mt-2">
+                      Derived semantic node (not directly from document)
+                    </p>
+                  )}
+                </div>
               </div>
             ) : (
               <div className="h-full flex items-center justify-center">

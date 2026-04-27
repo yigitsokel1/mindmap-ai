@@ -28,6 +28,9 @@ class FakeSemanticQueryService:
                     },
                 ],
                 "related_nodes": [{"id": "n-1", "type": "Method", "display_name": "Transformer"}],
+                "primary_focus_node_id": "n-1",
+                "secondary_focus_node_ids": ["ri-a", "ri-b"],
+                "focus_seed_ids": ["n-1", "ri-a", "ri-b"],
                 "citations": [],
                 "explanation": {
                     "why_these_entities": ["canonical match"],
@@ -49,6 +52,9 @@ class FakeSemanticQueryService:
                 "matched_entities": [{"id": "n-1", "type": "Method", "display_name": "Transformer"}],
                 "evidence": [],
                 "related_nodes": [{"id": "n-1", "type": "Method", "display_name": "Transformer"}],
+                "primary_focus_node_id": "n-1",
+                "secondary_focus_node_ids": [],
+                "focus_seed_ids": ["n-1"],
                 "citations": [],
                 "explanation": {
                     "why_these_entities": ["fallback semantic match"],
@@ -84,6 +90,9 @@ class FakeSemanticQueryService:
             "related_nodes": [
                 {"id": "n-1", "type": "Method", "display_name": "Transformer"},
             ],
+            "primary_focus_node_id": "n-1",
+            "secondary_focus_node_ids": ["ri-1", "ref-1"],
+            "focus_seed_ids": ["n-1", "ri-1", "ref-1"],
             "citations": [{"label": "[12]", "reference_entry_id": "ref-1", "page": 3, "document_name": "paper.pdf"}],
             "explanation": {
                 "why_these_entities": ["entity mention match"],
@@ -120,6 +129,8 @@ def test_query_semantic_endpoint_contract(api_client, monkeypatch):
     assert body["explanation"]["reasoning_path"]
     assert "selection_signals" in body["explanation"]
     assert body["related_nodes"][0]["display_name"] == "Transformer"
+    assert body["primary_focus_node_id"] == "n-1"
+    assert "ri-1" in body["secondary_focus_node_ids"]
     assert "limited_evidence" in body
     assert "uncertainty_signal" in body
 

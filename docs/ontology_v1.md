@@ -173,6 +173,37 @@ A problem domain or application area.
 | `canonical_name` | string | Yes | Normalized name (e.g., "Machine Translation") |
 | `surface_forms` | list[string] | No | Observed variants |
 
+### Identity & Reified Relation Nodes
+
+#### CanonicalEntity
+
+Graph-global canonical identity node used to deduplicate linkable entities.
+
+| Property | Type | Required | Description |
+|----------|------|----------|-------------|
+| `uid` | string | Yes | Canonical ID (`canonical_id`) used as primary key |
+| `entity_type` | string | Yes | Type bucket for canonical identity (e.g., `Method`, `Concept`) |
+| `canonical_name` | string | Yes | Canonical display name |
+| `normalized_name` | string | Yes | Normalized lookup form for deterministic matching |
+| `aliases` | list[string] | No | Learned/observed alias strings |
+| `normalized_aliases` | list[string] | No | Normalized alias strings for matching |
+| `acronyms` | list[string] | No | Acronym forms used for acronym expansion matches |
+| `created_at` | datetime | Yes | Creation timestamp |
+| `updated_at` | datetime | Yes | Last merge/update timestamp |
+
+#### RelationInstance
+
+Reified semantic relation node connecting source and target entities.
+
+| Property | Type | Required | Description |
+|----------|------|----------|-------------|
+| `uid` | string | Yes | Deterministic relation instance ID |
+| `type` | string | Yes | Relation type label (e.g., `USES`, `EVALUATED_ON`) |
+| `source_uid` | string | Yes | Source entity UID snapshot for the relation |
+| `target_uid` | string | Yes | Target entity UID snapshot for the relation |
+| `confidence` | float | Yes | Relation confidence score |
+| `created_at` | datetime | Yes | Creation timestamp |
+
 ### Provenance Node
 
 #### Evidence
@@ -231,6 +262,7 @@ These connect Evidence nodes to their source passages and identified entities.
 |------|--------|--------|------------|-------------|
 | `FROM_PASSAGE` | Evidence | Passage | — | Evidence was extracted from this passage |
 | `IDENTIFIES` | Evidence | (any semantic node) | — | Evidence identifies this entity |
+| `INSTANCE_OF_CANONICAL` | (any semantic node) | CanonicalEntity | — | Semantic node is linked to graph-global canonical identity |
 
 ---
 

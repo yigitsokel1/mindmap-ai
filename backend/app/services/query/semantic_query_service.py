@@ -103,6 +103,8 @@ class SemanticQueryService:
             key_points = self.answer_composer.compose_key_points(interpreted.intent, clusters, insights)
             citations = self._collect_citations(ranked_evidence, request.include_citations)
             related_nodes = self.candidate_selector.to_related_nodes(candidate_entities)
+            focus_seed_ids = self._build_focus_seed_ids(related_nodes=related_nodes, evidence=ranked_evidence)
+            primary_focus_node_id, secondary_focus_node_ids = self._split_focus_layers(focus_seed_ids)
             closest_concepts = [candidate.name for candidate in candidate_entities[:3]]
             if len(ranked_evidence) == 0 and request.answer_mode == "answer":
                 reasons = [
@@ -116,6 +118,9 @@ class SemanticQueryService:
                     closest_concepts=closest_concepts,
                     matched_entities=self.candidate_selector.to_matched_entities(candidate_entities),
                     related_nodes=related_nodes,
+                    focus_seed_ids=focus_seed_ids,
+                    primary_focus_node_id=primary_focus_node_id,
+                    secondary_focus_node_ids=secondary_focus_node_ids,
                     citations=citations,
                 )
             answer_text = self.answer_composer.compose(
@@ -159,6 +164,9 @@ class SemanticQueryService:
                 matched_entities=self.candidate_selector.to_matched_entities(candidate_entities),
                 evidence=ranked_evidence,
                 related_nodes=related_nodes,
+                primary_focus_node_id=primary_focus_node_id,
+                secondary_focus_node_ids=secondary_focus_node_ids,
+                focus_seed_ids=focus_seed_ids,
                 citations=citations,
                 explanation=explanation,
                 key_points=key_points,
@@ -257,6 +265,9 @@ class SemanticQueryService:
         closest_concepts: List[str],
         matched_entities: Sequence = (),
         related_nodes: Sequence = (),
+        focus_seed_ids: Sequence[str] = (),
+        primary_focus_node_id: str | None = None,
+        secondary_focus_node_ids: Sequence[str] = (),
         citations: Sequence = (),
     ) -> SemanticQueryAnswer:
         explanation = self.explanation_builder.build(
@@ -272,6 +283,9 @@ class SemanticQueryService:
             matched_entities=list(matched_entities),
             evidence=[],
             related_nodes=list(related_nodes),
+            primary_focus_node_id=primary_focus_node_id,
+            secondary_focus_node_ids=list(secondary_focus_node_ids),
+            focus_seed_ids=list(focus_seed_ids),
             citations=list(citations),
             explanation=explanation,
             key_points=[],
@@ -285,4 +299,36 @@ class SemanticQueryService:
             no_answer_reasons=reasons,
             closest_concepts=closest_concepts,
         )
+
+    @staticmethod
+    def _build_focus_seed_ids(
+        related_nodes: Sequence, evidence: Sequence[SemanticEvidenceItem]
+    ) -> List[str]:
+        seen: set[str] = set()
+        seeds: List[str] = []
+
+        for node in related_nodes:
+            node_id = getattr(node, "id", None)
+            if isinstance(node_id, str) and node_id and node_id not in seen:
+                seen.add(node_id)
+                seeds.append(node_id)
+
+        for item in evidence:
+            for related_id in item.related_node_ids:
+                if related_id and related_id not in seen:
+                    seen.add(related_id)
+                    seeds.append(related_id)
+            if item.reference_entry_id and item.reference_entry_id not in seen:
+                seen.add(item.reference_entry_id)
+                seeds.append(item.reference_entry_id)
+
+        return seeds
+
+    @staticmethod
+    def _split_focus_layers(focus_seed_ids: Sequence[str]) -> tuple[str | None, List[str]]:
+        if not focus_seed_ids:
+            return None, []
+        primary = focus_seed_ids[0]
+        secondary = [node_id for node_id in focus_seed_ids[1:] if node_id != primary]
+        return primary, secondary
 

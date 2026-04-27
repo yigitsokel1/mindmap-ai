@@ -2,9 +2,11 @@
  * Application-wide constants
  */
 
-import type { GraphFilters, GraphPreset, SemanticNodeType } from "./types";
+import type { GraphFilters, SemanticNodeType } from "./types";
 
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
+// Default to backend directly in local dev so long-running ingest requests
+// do not fail via the Next.js dev proxy timeout/socket reset path.
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 function apiUrl(path: string): string {
   return `${API_BASE_URL}${path}`;
@@ -19,7 +21,6 @@ export const API_ENDPOINTS = {
   QUERY_SEMANTIC: apiUrl("/api/query/semantic"),
   INGEST: apiUrl("/api/ingest"),
   INGEST_STATUS: (jobId: string) => apiUrl(`/api/ingest/${encodeURIComponent(jobId)}`),
-  DOCUMENTS: apiUrl("/api/documents"),
   STATIC: (filename: string) => apiUrl(`/static/${encodeURIComponent(filename)}`),
 } as const;
 
@@ -34,23 +35,11 @@ export const CORE_SEMANTIC_NODE_TYPES: SemanticNodeType[] = [
   "RelationInstance",
 ];
 
-export const PRESET_FILTERS: Record<GraphPreset, GraphFilters> = {
-  semantic: {
-    include_structural: false,
-    include_evidence: false,
-    include_citations: false,
-    node_types: [...CORE_SEMANTIC_NODE_TYPES],
-  },
-  evidence: {
-    include_structural: true,
-    include_evidence: true,
-    include_citations: false,
-  },
-  citation: {
-    include_structural: true,
-    include_evidence: true,
-    include_citations: true,
-  },
+export const DEFAULT_SEMANTIC_FILTERS: GraphFilters = {
+  include_structural: false,
+  include_evidence: false,
+  include_citations: false,
+  node_types: [...CORE_SEMANTIC_NODE_TYPES],
 };
 
 export const GRAPH_LIMITS = {
@@ -61,8 +50,3 @@ export const GRAPH_LIMITS = {
   UPDATE_DEBOUNCE_MS: 300,
 } as const;
 
-export const PRESET_LABELS: Record<GraphPreset, string> = {
-  semantic: "Semantic",
-  evidence: "Evidence",
-  citation: "Citation",
-};

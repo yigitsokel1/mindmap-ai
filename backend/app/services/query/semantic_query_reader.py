@@ -43,6 +43,9 @@ class SemanticQueryReader:
             OR EXISTS {
                 MATCH (n)-[:OUT_REL]->(:RelationInstance)<-[:SUPPORTS]-(:Evidence)-[:FROM_PASSAGE]->(:Passage)<-[:HAS_PASSAGE]-(:Section)<-[:HAS_SECTION]-(d:Document {uid: $document_id})
             }
+            OR EXISTS {
+                MATCH (n)-[:INSTANCE_OF_CANONICAL]->(:CanonicalEntity)<-[:INSTANCE_OF_CANONICAL]-(peer)-[:OUT_REL]->(:RelationInstance)<-[:SUPPORTS]-(:Evidence)-[:FROM_PASSAGE]->(:Passage)<-[:HAS_PASSAGE]-(:Section)<-[:HAS_SECTION]-(d2:Document {uid: $document_id})
+            }
           )
           AND (
             size($node_types) = 0
@@ -119,6 +122,9 @@ class SemanticQueryReader:
             WHERE (
                 $document_id IS NULL
                 OR d.uid = $document_id
+                    OR EXISTS {
+                        MATCH (n)-[:INSTANCE_OF_CANONICAL]->(:CanonicalEntity)<-[:INSTANCE_OF_CANONICAL]-(peer)-[:OUT_REL]->(:RelationInstance)<-[:SUPPORTS]-(:Evidence)-[:FROM_PASSAGE]->(:Passage)<-[:HAS_PASSAGE]-(:Section)<-[:HAS_SECTION]-(sd:Document {uid: $document_id})
+                    }
             )
             OPTIONAL MATCH (p)-[:HAS_INLINE_CITATION]->(ic:InlineCitation)
             OPTIONAL MATCH (ic)-[:REFERS_TO]->(ref:ReferenceEntry)
@@ -152,7 +158,13 @@ class SemanticQueryReader:
                 OPTIONAL MATCH (d:Document)-[:HAS_SECTION]->(:Section)-[:HAS_PASSAGE]->(p)
                 WITH ri, ev, p, d, sec
                 WHERE ri IS NOT NULL
-                  AND ($document_id IS NULL OR d.uid = $document_id)
+                  AND (
+                    $document_id IS NULL
+                    OR d.uid = $document_id
+                    OR EXISTS {
+                        MATCH (ri)<-[:OUT_REL]-(anchor)-[:INSTANCE_OF_CANONICAL]->(:CanonicalEntity)<-[:INSTANCE_OF_CANONICAL]-(peer)-[:OUT_REL]->(:RelationInstance)<-[:SUPPORTS]-(:Evidence)-[:FROM_PASSAGE]->(:Passage)<-[:HAS_PASSAGE]-(:Section)<-[:HAS_SECTION]-(sd:Document {uid: $document_id})
+                    }
+                  )
                 OPTIONAL MATCH (p)-[:HAS_INLINE_CITATION]->(ic:InlineCitation)
                 OPTIONAL MATCH (ic)-[:REFERS_TO]->(ref:ReferenceEntry)
                 RETURN ri, ev, p, d, sec, ic, ref
@@ -354,7 +366,8 @@ class SemanticQueryReader:
     def _pick_document_id(document: Any) -> Optional[str]:
         if not document:
             return None
-        return str(document.get("uid") or document.get("id") or document.get("name") or "")
+        uid = document.get("uid")
+        return str(uid) if uid else None
 
     @staticmethod
     def _pick_document_name(document: Any) -> Optional[str]:

@@ -1,6 +1,6 @@
 import { create } from "zustand";
-import { PRESET_FILTERS } from "../lib/constants";
-import type { ChatTurn, GraphFilters, GraphPreset, NodeContext } from "../lib/types";
+import { DEFAULT_SEMANTIC_FILTERS } from "../lib/constants";
+import type { ChatTurn, GraphFilters, NodeContext } from "../lib/types";
 
 function normalizeTypes(nodeTypes?: string[]): string[] {
   return nodeTypes ? [...nodeTypes].sort((a, b) => a.localeCompare(b)) : [];
@@ -19,25 +19,25 @@ function sameFilters(a: GraphFilters, b: GraphFilters): boolean {
 interface AppState {
   // Query/UI state
   isCommandCenterOpen: boolean;
-  activeTab: "query" | "files";
   mode: "semantic";
-  queryMode: "answer" | "explore";
   chatTurns: ChatTurn[];
 
   // Inspector state
   isPDFViewerOpen: boolean;
+  pdfUrl: string | null;
+  pdfDocName: string | null;
+  pdfPage: number | null;
   selectedNodeContext: NodeContext | null;
   setSelectedNodeContext: (context: NodeContext | null) => void;
 
   // Graph state
   selectedNodeId: string | null;
+  primaryFocusNodeId: string | null;
+  secondaryFocusNodeIds: string[];
   highlightedNodeIds: string[];
   isGraphFocused: boolean;
-  graphPreset: GraphPreset;
   graphFilters: GraphFilters;
   graphRefreshToken: number;
-  graphDebugEnabled: boolean;
-  graphBypassDocumentFilter: boolean;
   graphFocusRelevantOnly: boolean;
 
   // Document/filter state
@@ -49,20 +49,16 @@ interface AppState {
 
   // Query/UI actions
   toggleCommandCenter: () => void;
-  setActiveTab: (tab: "query" | "files") => void;
-  setQueryMode: (mode: "answer" | "explore") => void;
   appendChatTurn: (turn: ChatTurn) => void;
   clearChatTurns: () => void;
 
   // Graph actions
   setSelectedNode: (nodeId: string | null) => void;
+  setGraphFocusNodes: (primaryNodeId: string | null, secondaryNodeIds: string[]) => void;
   setHighlightedNodes: (nodeIds: string[]) => void;
   setGraphFocused: (focused: boolean) => void;
-  setGraphPreset: (preset: GraphPreset) => void;
   updateGraphFilters: (filters: Partial<GraphFilters>) => void;
   requestGraphRefresh: () => void;
-  setGraphDebugEnabled: (enabled: boolean) => void;
-  setGraphBypassDocumentFilter: (enabled: boolean) => void;
   setGraphFocusRelevantOnly: (enabled: boolean) => void;
 
   // Document/filter actions
@@ -72,30 +68,25 @@ interface AppState {
 export const useAppStore = create<AppState>((set) => ({
   // Initial State
   isCommandCenterOpen: true,
-  activeTab: "query",
   mode: "semantic",
-  queryMode: "answer",
   chatTurns: [],
   isPDFViewerOpen: false,
   selectedNodeContext: null,
   selectedNodeId: null,
+  primaryFocusNodeId: null,
+  secondaryFocusNodeIds: [],
   pdfUrl: null,
   pdfDocName: null,
   pdfPage: null,
   highlightedNodeIds: [],
   isGraphFocused: true,
-  graphPreset: "semantic",
-  graphFilters: { ...PRESET_FILTERS.semantic },
+  graphFilters: { ...DEFAULT_SEMANTIC_FILTERS },
   graphRefreshToken: 0,
-  graphDebugEnabled: false,
-  graphBypassDocumentFilter: false,
   graphFocusRelevantOnly: false,
   selectedDocumentId: null,
   
   // Actions
   toggleCommandCenter: () => set((state) => ({ isCommandCenterOpen: !state.isCommandCenterOpen })),
-  setActiveTab: (tab: "query" | "files") => set({ activeTab: tab }),
-  setQueryMode: (queryMode: "answer" | "explore") => set({ queryMode }),
   appendChatTurn: (turn: ChatTurn) => set((state) => ({ chatTurns: [...state.chatTurns, turn] })),
   clearChatTurns: () => set({ chatTurns: [] }),
   openPDFViewer: (url: string, docName: string, page: number) =>
@@ -115,22 +106,18 @@ export const useAppStore = create<AppState>((set) => ({
       isGraphFocused: true,
     }),
   setSelectedNode: (nodeId: string | null) => set({ selectedNodeId: nodeId }),
-  setHighlightedNodes: (nodeIds: string[]) => set({ highlightedNodeIds: nodeIds }),
-  setGraphFocused: (focused: boolean) => set({ isGraphFocused: focused }),
-  setGraphPreset: (preset: GraphPreset) =>
-    set((state) => {
-      const nextFilters: GraphFilters = {
-        ...PRESET_FILTERS[preset],
-        document_id: state.graphFilters.document_id,
-      };
-      if (state.graphPreset === preset && sameFilters(state.graphFilters, nextFilters)) {
-        return state;
-      }
+  setGraphFocusNodes: (primaryNodeId: string | null, secondaryNodeIds: string[]) =>
+    set(() => {
+      const dedupedSecondary = Array.from(new Set(secondaryNodeIds.filter((nodeId) => nodeId && nodeId !== primaryNodeId)));
+      const highlightedNodeIds = primaryNodeId ? [primaryNodeId, ...dedupedSecondary] : dedupedSecondary;
       return {
-        graphPreset: preset,
-        graphFilters: nextFilters,
+        primaryFocusNodeId: primaryNodeId,
+        secondaryFocusNodeIds: dedupedSecondary,
+        highlightedNodeIds,
       };
     }),
+  setHighlightedNodes: (nodeIds: string[]) => set({ highlightedNodeIds: nodeIds }),
+  setGraphFocused: (focused: boolean) => set({ isGraphFocused: focused }),
   setSelectedDocumentId: (documentId: string | null) =>
     set((state) => {
       const nextDocumentId = documentId || null;
@@ -164,8 +151,6 @@ export const useAppStore = create<AppState>((set) => ({
     set((state) => ({
       graphRefreshToken: state.graphRefreshToken + 1,
     })),
-  setGraphDebugEnabled: (enabled: boolean) => set({ graphDebugEnabled: enabled }),
-  setGraphBypassDocumentFilter: (enabled: boolean) => set({ graphBypassDocumentFilter: enabled }),
   setGraphFocusRelevantOnly: (enabled: boolean) => set({ graphFocusRelevantOnly: enabled }),
   setSelectedNodeContext: (context: NodeContext | null) => set({ selectedNodeContext: context }),
 }));
