@@ -79,6 +79,28 @@ class SemanticQueryService:
                     reasons=[f'No direct match for "{request.question}".', "No supporting passages found."],
                     closest_concepts=[],
                 )
+            only_fallback_candidates = all(
+                "fallback" in candidate.match_reason.lower() for candidate in candidate_entities
+            )
+            if (
+                request.answer_mode == "answer"
+                and interpreted.intent == "SUMMARY"
+                and only_fallback_candidates
+                and not self._has_question_entity_anchor(
+                    request.question,
+                    interpreted,
+                    candidate_entities,
+                )
+            ):
+                return self._build_abstain_response(
+                    request=request,
+                    interpreted=interpreted,
+                    reasons=[
+                        f'No direct match for "{request.question}".',
+                        "Matched entities are weak fallback candidates.",
+                    ],
+                    closest_concepts=[],
+                )
             traversal_plan = self.decide_traversal_scope(request, interpreted)
             evidence = self.traversal_executor.execute(
                 reader=self.reader,
@@ -331,4 +353,30 @@ class SemanticQueryService:
         primary = focus_seed_ids[0]
         secondary = [node_id for node_id in focus_seed_ids[1:] if node_id != primary]
         return primary, secondary
+
+    @staticmethod
+    def _has_question_entity_anchor(
+        question: str,
+        interpreted: InterpretedQuestion,
+        candidates: Sequence[CandidateEntity],
+    ) -> bool:
+        question_tokens = {
+            token.lower()
+            for token in CandidateSelector.tokenize_question(question)
+            if len(token) >= 3
+        }
+        hint_tokens = {
+            token.lower()
+            for token in interpreted.entity_hints
+            if len(token) >= 3
+        }
+        anchor_tokens = question_tokens.union(hint_tokens)
+        if not anchor_tokens:
+            return False
+
+        candidate_names = [candidate.name.lower() for candidate in candidates]
+        for token in anchor_tokens:
+            if any(token in candidate_name for candidate_name in candidate_names):
+                return True
+        return False
 

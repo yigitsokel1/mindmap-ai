@@ -32,4 +32,4 @@ Bir görev şu koşullar sağlanmadan bitmez:
 5. Diğer docs — yardımcı
 
 ## Silinmesi gereken (temizlik listesi)
-- frontend/app/legacy/ — quarantine, silinmeli (Sprint 23 Phase 2'de legacy tsx'ler silindi, klasör boş kaldı)
+- `frontend/app/legacy/` — klasör boş, silinebilir (tsx'ler Sprint 23'te silindi)

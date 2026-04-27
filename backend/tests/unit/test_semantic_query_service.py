@@ -305,3 +305,51 @@ def test_semantic_query_service_uses_fallback_candidates_when_token_match_empty(
 
     assert result.matched_entities
     assert result.evidence
+
+
+def test_semantic_query_service_abstains_for_unanchored_summary_fallback(monkeypatch):
+    import backend.app.services.query.semantic_query_service as service_module
+
+    class UnanchoredDriver(FakeDriver):
+        def execute_query(self, query, params=None, database_=None):
+            if "toLower(coalesce(n.canonical_name" in query:
+                return ([], None, None)
+            if "graph_density_fallback" in str(params):
+                return (
+                    [
+                        {
+                            "n": FakeNode("n-1", ["Method"], {"display_name": "Transformer"}),
+                            "relation_count": 3,
+                            "evidence_count": 2,
+                            "citation_count": 0,
+                        }
+                    ],
+                    None,
+                    None,
+                )
+            if "MATCH (n)-[:OUT_REL]->(ri:RelationInstance)" in query:
+                return (
+                    [
+                        {
+                            "ri": FakeNode("ri-1", ["RelationInstance"], {"type": "USES"}),
+                            "ev": FakeNode("ev-1", ["Evidence"], {"statement": "support statement"}),
+                            "p": FakeNode("p-1", ["Passage"], {"text": "support statement", "page_number": 3}),
+                            "d": FakeNode("d-1", ["Document"], {"uid": "doc-1", "name": "paper.pdf"}),
+                        }
+                    ],
+                    None,
+                    None,
+                )
+            return ([], None, None)
+
+    class UnanchoredDB(FakeDB):
+        def __init__(self):
+            self.driver = UnanchoredDriver()
+
+    monkeypatch.setattr(service_module, "Neo4jDatabase", UnanchoredDB)
+    service = SemanticQueryService()
+    result = service.answer(SemanticQueryRequest(question="What does YOLO prove in these documents?"))
+
+    assert result.answer == "No grounded answer found in the current documents."
+    assert result.evidence == []
+    assert result.no_answer_reasons

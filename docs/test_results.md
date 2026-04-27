@@ -5,6 +5,50 @@ Yeni sonuç eklendiğinde en üste ekle, eskiler altta kalsın.
 
 ---
 
+## Sprint 24 Re-run
+
+**Tarih:** 2026-04-27
+**Durum:** Yeniden çalıştırma başarılı (backend + semantic eval + e2e smoke)
+
+### Backend
+```
+poetry run pytest backend/tests -q
+```
+Sonuç: PASS (`93 passed`)
+
+### Semantic Eval (semantic_query profili)
+```
+poetry run python backend/tools/run_semantic_eval.py --profile semantic_query
+```
+Sonuç:
+- Hallucination rate: `0.00% (0/3)`
+- Intent accuracy: `100.00%`
+- Citation presence: `94.74%`
+
+### E2E / Smoke
+```
+cd frontend && npm run test:e2e
+```
+Sonuç: PASS (`6 passed`)
+
+## Sprint 24
+
+**Tarih:** 2026-04-27
+**Durum:** Backend testleri ve should_not_answer guard doğrulaması başarılı
+
+### Backend
+```
+poetry run pytest backend/tests
+```
+Sonuç: PASS (`93 passed`)
+
+### Semantic Eval (Sprint 24 odak)
+```
+poetry run python backend/tools/run_semantic_eval.py --profile semantic_query
+```
+Sonuç:
+- Hallucination rate: `0.00% (0/3)` (`should_not_answer` case'leri no-answer)
+
 ## Sprint 23 Phase 2
 
 **Tarih:** 2026-04-27

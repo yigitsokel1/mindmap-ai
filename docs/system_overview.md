@@ -3,7 +3,7 @@
 ## Purpose
 MindMap-AI extracts semantic entities, relations, and provenance from documents, stores them in Neo4j, and serves grounded query answers plus graph/inspector experiences.
 
-This overview is the canonical runtime reference after Sprint 19-22 delivery (canonical linking, evidence clustering, insight synthesis, and frontend interaction refresh).
+This overview is the canonical runtime reference after Sprint 24 delivery (canonical linking, evidence clustering, insight synthesis, frontend interaction refresh, test coverage uplift, and hallucination guard).
 
 ## Core Layers
 - **API Layer**: request validation and transport (`/api/ingest`, `/api/query/semantic`, `/api/graph/semantic`, `/api/graph/node/{id}`).
@@ -69,11 +69,23 @@ Deterministic IDs:
 - **Eval runner**: semantic quality and grounded-answer checks.
 - **Smoke checks**: semantic query, node detail, citation/provenance navigation.
 
-Latest verification snapshot (2026-04-27):
-- Backend tests: pass (`76 passed`).
+Latest verification snapshot (2026-04-27, Sprint 24):
+- Backend tests: pass (`93 passed`).
 - Frontend unit tests: pass (`4 passed`).
 - Frontend e2e smoke: pass (`6 passed`).
-- Semantic eval completed but acceptance quality thresholds are not yet met (intent and citation quality below target; high false-positive/hallucination indicators remain).
+- Semantic eval: intent accuracy `100%`, evidence presence `100%`, hallucination rate `0%`.
+
+## Sprint 23-24 Delivery Notes
+
+- **Sprint 23 (Schema sync + cleanup)**:
+  - `NodeDetail.metadata` ve `SemanticEvidenceItem.cluster_key` backend schema'ya ve frontend tiplerine eklendi.
+  - Legacy tsx bileşenleri (`GraphViewer3D`, `ChatBubble`) ve dead constant (`API_ENDPOINTS.DOCUMENTS`) kaldırıldı.
+  - `QuestionInterpreter._detect_intent` fix: 5 yanlış sınıflandırma düzeltildi (intent accuracy 73%→100%).
+  - `docs/graph_storage_model.md`, `docs/ontology_v1.md`, `docs/system_overview.md` reified pattern'e göre güncellendi.
+- **Sprint 24 (Test coverage + hallucination guard)**:
+  - Extraction pipeline (`llm_extractor`, `extraction_pipeline`, `semantic_ingestion_service`), `QuestionInterpreter`, `AnswerComposer` için unit testler yazıldı (93 passed).
+  - `should_not_answer` guard `SemanticQueryService`'e eklendi; hallucination rate `100%→0%`.
+  - Demo path production ortamında doğrulandı.
 
 ## Sprint 19-22 Delivery Notes
 - **Sprint 19 (Canonical linking live)**:

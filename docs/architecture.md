@@ -1,4 +1,4 @@
-# Mimari — Canonical Referans (Sprint 23)
+# Mimari — Canonical Referans (Sprint 24)
 
 ## Primary Runtime Path
 ```
@@ -27,7 +27,7 @@ Doğru referans: docs/graph_contract.md
 
 ## Node Tipleri (ontology_v1 + Sprint 19+)
 - Semantic: Concept, Method, Dataset, Metric, Task, Author, Institution
-- Canonical: CanonicalEntity (Sprint 19'da eklendi, ontology_v1'de henüz yok)
+- Canonical: CanonicalEntity (Sprint 19, ontology_v1.md Sprint 23'te güncellendi)
 - Reified: RelationInstance
 - Provenance: Evidence, Passage, Section, Document
 - Citation: InlineCitation, ReferenceEntry

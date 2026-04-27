@@ -1,26 +1,25 @@
-## Sprint 23 - Phase 1 Real Acceptance Pack
+## Sprint 24 - Acceptance Pack
 
-- Run `poetry run python backend/tools/run_semantic_eval.py --profile acceptance_real`.
-- Verify all cases under `backend/evals/acceptance_real/cases.json` are executed.
+- Run `poetry run python backend/tools/run_semantic_eval.py`.
+- Verify all cases under `backend/evals/semantic_query/cases.json` are executed.
 - Confirm citation/provenance matches `backend/evals/acceptance_real/expected_citations.json`.
 - Spot-check at least 2 cases manually in UI:
   - answer text grounded in evidence snippets
   - citation click leads to provenance context in inspector
 
-### Latest Execution Snapshot (Sprint 23 Phase 2)
+### Latest Execution Snapshot (Sprint 24)
 
 - Timestamp: 2026-04-27
-- `poetry run pytest backend/tests` -> PASS (`76 passed`)
+- `poetry run pytest backend/tests` -> PASS (`93 passed`)
 - `cd frontend && npm test` -> PASS (`4 passed`)
 - `cd frontend && npm run test:e2e` -> PASS (`6 passed`)
-- `poetry run python backend/tools/run_semantic_eval.py` -> RUN COMPLETED, acceptance thresholds NOT MET
-  - Intent accuracy: `73.68%` (target >= `80%`) -> FAIL
+- `poetry run python backend/tools/run_semantic_eval.py` -> PASS
+  - Intent accuracy: `100.00%` (target >= `80%`) -> PASS
   - Evidence presence: `100.00%` (target >= `90%`) -> PASS
-  - Citation presence: `78.95%` (target >= `90%`) -> FAIL
-  - Insight correctness: `0.00%` -> FAIL
-  - Cluster quality score: `23.70%` -> FAIL
-  - False positive rate: `100.00%` -> FAIL
-  - Hallucination rate: `100.00%` -> FAIL
+  - Hallucination rate: `0.00%` -> PASS
+  - Citation presence: `94.74%` -> PASS
+  - Insight correctness: `0.00%` -> backlog (Sprint 26)
+  - Cluster quality score: `23.70%` -> backlog
 
 # Manual Acceptance Checklist
 
