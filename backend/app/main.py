@@ -16,6 +16,18 @@ from backend.app.api.router import router
 from backend.app.core.db import Neo4jDatabase
 
 
+def _get_allowed_origins() -> list[str]:
+    """Return CORS origins from ALLOWED_ORIGINS env or local defaults."""
+    raw_origins = os.getenv("ALLOWED_ORIGINS", "")
+    parsed_origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+    if parsed_origins:
+        return parsed_origins
+    return [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application lifespan events.
@@ -43,10 +55,7 @@ app = FastAPI(
 # Add CORS middleware to allow requests from frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=_get_allowed_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

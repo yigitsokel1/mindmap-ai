@@ -5,6 +5,36 @@ Yeni sonuç eklendiğinde en üste ekle, eskiler altta kalsın.
 
 ---
 
+## Sprint 25 Deployment Run
+
+**Tarih:** 2026-04-27
+**Durum:** Kısmi başarılı — frontend production deploy hazır, backend production route doğrulaması başarısız
+
+### Frontend Production Build
+```
+cd frontend && npm run build
+```
+Sonuç: PASS (Next.js production build başarılı)
+
+### Production Seed
+```
+poetry run python backend/tools/seed_smoke_graph.py
+```
+Sonuç: PASS (`Seed complete. SMOKE_DOCUMENT_ID=doc-transformer`)
+
+### Frontend Deploy (Vercel)
+```
+cd frontend && vercel --prod --yes
+```
+Sonuç: PASS (`https://frontend-kappa-rosy-63.vercel.app`)
+
+### Backend URL Smoke
+```
+GET https://mindmap-ai-backend.onrender.com/
+GET https://mindmap-ai-backend.onrender.com/api/query/semantic
+```
+Sonuç: FAIL (her iki endpoint `404`, FastAPI health/route doğrulaması sağlanmadı)
+
 ## Sprint 24 Re-run
 
 **Tarih:** 2026-04-27

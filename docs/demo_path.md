@@ -30,3 +30,9 @@ Show a complete evidence-backed flow in under 5 minutes.
 ## Success Signal
 
 Audience sees one end-to-end loop: question -> grounded answer -> inspect entity -> follow citation provenance.
+
+## Sprint 25 Production Check
+
+- Frontend URL: `https://frontend-kappa-rosy-63.vercel.app`
+- Backend URL (configured): `https://mindmap-ai-backend.onrender.com`
+- Current status: bloklu. Backend URL FastAPI endpoint'lerini döndürmediği için (`/` ve `/api/*` 404), production demo path henüz doğrulanamadı.
