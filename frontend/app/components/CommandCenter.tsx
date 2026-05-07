@@ -567,16 +567,17 @@ export default function CommandCenter() {
                         </summary>
                         <div className="space-y-2 max-h-44 overflow-y-auto mt-2">
                           {semanticResult.citations.map((citation, idx) => (
-                            <CitationChip
-                              key={`${citation.reference_entry_id || citation.label}-${idx}`}
-                              docName={resolveDocumentDisplayName(
-                                citation.document_name ?? undefined,
-                                undefined,
-                                citation.label || "Unknown"
-                              )}
-                              page={citation.page ?? 0}
-                              onClick={() => handleCitationClick(citation)}
-                            />
+                            <div key={`${citation.reference_entry_id || citation.label}-${idx}`} data-testid={`citation-item-${idx}`}>
+                              <CitationChip
+                                docName={resolveDocumentDisplayName(
+                                  citation.document_name ?? undefined,
+                                  undefined,
+                                  citation.label || "Unknown"
+                                )}
+                                page={citation.page ?? 0}
+                                onClick={() => handleCitationClick(citation)}
+                              />
+                            </div>
                           ))}
                           {semanticResult.citations.length === 0 && (
                             <div className="bg-black/30 border border-white/10 rounded px-3 py-2">

@@ -30,7 +30,8 @@ def test_read_graph_shapes_nodes_edges_and_meta(monkeypatch):
 
     node_a = FakeNode("n1", ["Method"], {"canonical_name": "Transformer"})
     node_b = FakeNode("n2", ["Concept"], {"name": "Attention"})
-    monkeypatch.setattr(reader, "_load_nodes", lambda *_args, **_kwargs: [{"n": node_a}, {"n": node_b}])
+    monkeypatch.setattr(reader, "_is_single_document_graph", lambda *_: False)
+    monkeypatch.setattr(reader, "_load_nodes_for_document", lambda *_args, **_kwargs: [{"n": node_a}, {"n": node_b}])
     monkeypatch.setattr(reader, "_load_in_scope_node_ids", lambda _node_ids, _document_id: set(_node_ids))
     monkeypatch.setattr(reader, "_load_edges", lambda _node_ids, in_scope_node_ids=None: [
         GraphEdge(id="r1", source="n1", target="n2", type="USES", properties={"confidence": 0.9})
@@ -81,7 +82,7 @@ def test_read_graph_empty_result_keeps_contract(monkeypatch):
     reader.EVIDENCE_NODE_TYPES = SemanticGraphReader.EVIDENCE_NODE_TYPES
     reader.CITATION_NODE_TYPES = SemanticGraphReader.CITATION_NODE_TYPES
     reader.SUPPORTED_NODE_TYPES = SemanticGraphReader.SUPPORTED_NODE_TYPES
-    monkeypatch.setattr(reader, "_load_nodes", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(reader, "_load_nodes_global", lambda *_args, **_kwargs: [])
     monkeypatch.setattr(reader, "_load_in_scope_node_ids", lambda _node_ids, _document_id: set())
     monkeypatch.setattr(reader, "_load_edges", lambda _node_ids, in_scope_node_ids=None: [])
 

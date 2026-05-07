@@ -78,7 +78,7 @@ def test_semantic_query_service_builds_grounded_answer(monkeypatch):
     assert "Transformer" in result.answer
     assert len(result.evidence) == 1
     assert result.evidence[0].relation_type == "SUPPORTS_METHOD"
-    assert result.evidence[0].page == 4
+    assert result.evidence[0].page == 5  # page_number=4 (0-indexed) → +1 for 1-based display
     assert result.evidence[0].document_id == "doc-1"
     assert result.evidence[0].citation_label == "[12]"
     assert result.evidence[0].reference_entry_id == "ref-1"

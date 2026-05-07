@@ -44,6 +44,7 @@ export default function Inspector() {
   const fallbackSourcePage = firstEvidence?.page;
   const fallbackSourceSnippet = firstEvidence?.text || undefined;
   const sourceDocument = selectedNodeContext?.documentName || fallbackSourceDocument;
+  const sourceDocumentFile = selectedNodeContext?.documentFileName || fallbackSourceDocument;
   const sourcePage = selectedNodeContext?.page ?? fallbackSourcePage;
   const sourceSnippet = selectedNodeContext?.rawText || fallbackSourceSnippet;
   const hasSource = Boolean(sourceDocument);
@@ -96,6 +97,7 @@ export default function Inspector() {
     <AnimatePresence>
       {(isPDFViewerOpen || !!selectedNodeContext) && (
         <motion.div
+          data-testid="inspector-panel"
           initial={{ x: "100%" }}
           animate={{ x: 0 }}
           exit={{ x: "100%" }}
@@ -186,7 +188,12 @@ export default function Inspector() {
                         <button
                           type="button"
                           onClick={() =>
-                            openPDFViewer(API_ENDPOINTS.STATIC(sourceDocument), sourceDocument, sourcePage || 1, sourceSnippet)
+                            openPDFViewer(
+                              API_ENDPOINTS.STATIC(sourceDocumentFile || sourceDocument || ""),
+                              sourceDocument || sourceDocumentFile || "document.pdf",
+                              sourcePage || 1,
+                              sourceSnippet
+                            )
                           }
                           className="mt-3 inline-flex items-center gap-1 px-2 py-1 text-[10px] rounded border border-white/20 text-white/80 hover:bg-white/10 font-mono"
                         >

@@ -49,7 +49,7 @@ test("@smoke citation click opens provenance panel", async ({ page }) => {
   await expect(citationItem.or(noCitationState)).toBeVisible();
   if (await citationItem.isVisible()) {
     await citationItem.click();
-    await expect(page.locator("iframe").first()).toBeVisible();
+    await expect(page.getByTestId("inspector-panel")).toBeVisible();
   } else {
     await expect(noCitationState).toBeVisible();
   }
