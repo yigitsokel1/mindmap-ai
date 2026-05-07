@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, FileText, Loader2, AlertTriangle, ExternalLink } from "lucide-react";
 import { API_ENDPOINTS } from "../lib/constants";
@@ -8,12 +9,22 @@ import { fetchJson, toUserMessage } from "../lib/api";
 import type { NodeDetail } from "../lib/types";
 import { useAppStore } from "../store/useAppStore";
 
+const PDFHighlightViewer = dynamic(() => import("./PDFHighlightViewer"), {
+  ssr: false,
+  loading: () => (
+    <div className="h-full flex items-center justify-center text-white/50 text-xs font-mono">
+      Loading PDF viewer...
+    </div>
+  ),
+});
+
 export default function Inspector() {
   const {
     isPDFViewerOpen,
     pdfUrl,
     pdfDocName,
     pdfPage,
+    pdfSnippet,
     openPDFViewer,
     closePDFViewer,
     selectedNodeContext,
@@ -79,9 +90,6 @@ export default function Inspector() {
     };
   }, [selectedNodeContext?.id, selectedNodeContext?.label, selectedDocumentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const pdfUrlWithPage: string | undefined = pdfUrl
-    ? (pdfPage ? `${pdfUrl}#page=${pdfPage}` : pdfUrl)
-    : undefined;
   const canOpenPdfFromContext = hasSource;
 
   return (
@@ -122,10 +130,11 @@ export default function Inspector() {
           {/* PDF Content */}
           <div className="flex-1 overflow-hidden bg-black/20 rounded-b-2xl">
             {pdfUrl ? (
-              <iframe
-                src={pdfUrlWithPage}
-                className="w-full h-full border-0 rounded-b-2xl"
-                title={pdfDocName || "PDF Viewer"}
+              <PDFHighlightViewer
+                url={pdfUrl}
+                page={pdfPage ?? 1}
+                snippet={pdfSnippet}
+                docName={pdfDocName}
               />
             ) : selectedNodeContext ? (
               <div className="h-full overflow-y-auto p-4">
@@ -177,7 +186,7 @@ export default function Inspector() {
                         <button
                           type="button"
                           onClick={() =>
-                            openPDFViewer(API_ENDPOINTS.STATIC(sourceDocument), sourceDocument, sourcePage || 1)
+                            openPDFViewer(API_ENDPOINTS.STATIC(sourceDocument), sourceDocument, sourcePage || 1, sourceSnippet)
                           }
                           className="mt-3 inline-flex items-center gap-1 px-2 py-1 text-[10px] rounded border border-white/20 text-white/80 hover:bg-white/10 font-mono"
                         >

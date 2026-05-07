@@ -27,6 +27,7 @@ interface AppState {
   pdfUrl: string | null;
   pdfDocName: string | null;
   pdfPage: number | null;
+  pdfSnippet: string | null;
   selectedNodeContext: NodeContext | null;
   setSelectedNodeContext: (context: NodeContext | null) => void;
 
@@ -44,7 +45,7 @@ interface AppState {
   selectedDocumentId: string | null;
 
   // Inspector actions
-  openPDFViewer: (url: string, docName: string, page: number) => void;
+  openPDFViewer: (url: string, docName: string, page: number, snippet?: string | null) => void;
   closePDFViewer: () => void;
 
   // Query/UI actions
@@ -78,6 +79,7 @@ export const useAppStore = create<AppState>((set) => ({
   pdfUrl: null,
   pdfDocName: null,
   pdfPage: null,
+  pdfSnippet: null,
   highlightedNodeIds: [],
   isGraphFocused: true,
   graphFilters: { ...DEFAULT_SEMANTIC_FILTERS },
@@ -89,12 +91,13 @@ export const useAppStore = create<AppState>((set) => ({
   toggleCommandCenter: () => set((state) => ({ isCommandCenterOpen: !state.isCommandCenterOpen })),
   appendChatTurn: (turn: ChatTurn) => set((state) => ({ chatTurns: [...state.chatTurns, turn] })),
   clearChatTurns: () => set({ chatTurns: [] }),
-  openPDFViewer: (url: string, docName: string, page: number) =>
+  openPDFViewer: (url: string, docName: string, page: number, snippet?: string | null) =>
     set({
       isPDFViewerOpen: true,
       pdfUrl: url,
       pdfDocName: docName,
       pdfPage: page,
+      pdfSnippet: snippet ?? null,
       isGraphFocused: false,
     }),
   closePDFViewer: () =>
@@ -103,6 +106,7 @@ export const useAppStore = create<AppState>((set) => ({
       pdfUrl: null,
       pdfDocName: null,
       pdfPage: null,
+      pdfSnippet: null,
       isGraphFocused: true,
     }),
   setSelectedNode: (nodeId: string | null) => set({ selectedNodeId: nodeId }),

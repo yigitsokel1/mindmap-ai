@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Send, Loader2, MessageSquare, FolderOpen, X, Lightbulb, Network, AlertTriangle } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
 import FileLibrary from "./FileLibrary";
+import CitationChip from "./CitationChip";
 import { API_ENDPOINTS } from "../lib/constants";
 import { fetchJson, toUserMessage } from "../lib/api";
 import { resolveDocumentDisplayName } from "../lib/documentLabel";
@@ -199,7 +200,7 @@ export default function CommandCenter() {
     );
     if (evidence.page && evidence.document_name) {
       const pdfUrl = API_ENDPOINTS.STATIC(evidence.document_name);
-      openPDFViewer(pdfUrl, evidence.document_name, evidence.page);
+      openPDFViewer(pdfUrl, evidence.document_name, evidence.page, evidence.snippet || null);
     }
     setSelectedNodeContext({
       id: evidence.related_node_ids.join("|") || `evidence-${Date.now()}`,
@@ -566,22 +567,16 @@ export default function CommandCenter() {
                         </summary>
                         <div className="space-y-2 max-h-44 overflow-y-auto mt-2">
                           {semanticResult.citations.map((citation, idx) => (
-                            <button
+                            <CitationChip
                               key={`${citation.reference_entry_id || citation.label}-${idx}`}
+                              docName={resolveDocumentDisplayName(
+                                citation.document_name ?? undefined,
+                                undefined,
+                                citation.label || "Unknown"
+                              )}
+                              page={citation.page ?? 0}
                               onClick={() => handleCitationClick(citation)}
-                              data-testid={`citation-item-${idx}`}
-                              className="w-full text-left bg-black/30 border border-white/10 rounded px-3 py-2 hover:bg-white/5 transition-colors"
-                            >
-                              <p className="text-[10px] text-cyan-300 font-mono">{citation.label}</p>
-                              <p className="text-[10px] text-white/60 font-mono mt-1">
-                                {resolveDocumentDisplayName(
-                                  citation.document_name ?? undefined,
-                                  undefined,
-                                  citation.document_name ?? "Unknown document"
-                                )}
-                                {citation.page ? ` · page ${citation.page}` : ""}
-                              </p>
-                            </button>
+                            />
                           ))}
                           {semanticResult.citations.length === 0 && (
                             <div className="bg-black/30 border border-white/10 rounded px-3 py-2">
