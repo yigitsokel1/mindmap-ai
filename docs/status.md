@@ -1,7 +1,7 @@
-# Status — Sprint 25
+# Status — Sprint 26
 
 ## Şu an neredeyiz
-Sprint 24 tamamlandı. Sprint 25 hedefi: portfolio deployment — CORS fix, env config, Neo4j AuraDB, production build, deploy.
+Sprint 25 tamamlandı (production deploy). Sprint 26 tamamlandı: PDF metin highlight, react-pdf entegrasyonu, CitationChip bağlantısı.
 
 ## Sprint Geçmişi
 - Sprint 1-9 ✅ — Temel ingestion, extraction, legacy RAG
@@ -25,11 +25,18 @@ Sprint 24 tamamlandı. Sprint 25 hedefi: portfolio deployment — CORS fix, env 
 - [x] Deploy sonrası demo path doğrula (production URL üzerinden)
 - [x] PDF static 404 düzeltmesi: `/static` mount path `backend/uploaded_docs` ile hizalandı
 
-## Backlog (Sprint 26+ adayları)
+## Sprint 26 — Görevler
+- [x] Staged değişiklikleri commit et (PDF 404 fix, FileLibrary fallback name)
+- [x] PDFHighlightViewer bileşeni (react-pdf v9) — text layer + keyword highlight
+- [x] Inspector: iframe → PDFHighlightViewer, snippet store'dan geliyor
+- [x] CommandCenter: evidence.snippet → openPDFViewer'a iletildi
+- [x] CitationChip bileşeni citations listesinde kullanılıyor
+- [x] `frontend/app/legacy/` boş klasör silindi
+
+## Backlog (Sprint 27+ adayları)
 - SemanticGraphViewer + FileLibrary upload testleri
 - Semantic eval insight correctness %0 — InsightBuilder fixture doğrulaması
 - Semantic eval citation false positive (6 case)
-- `frontend/app/legacy/` klasörü boş, silinebilir
 
 ## Launch Checklist Durumu
 - [x] `poetry run pytest backend/tests` — 93 passed (2026-04-27)
