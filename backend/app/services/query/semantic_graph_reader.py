@@ -516,7 +516,16 @@ class SemanticGraphReader:
                     text=text[:420],
                     passage_id=self._element_id(passage) if passage is not None else "",
                     document_id=str(document.get("uid") or "") if document is not None else "",
-                    document_name=str(document.get("title") or document.get("file_name") or "") if document is not None else None,
+                    document_name=(
+                        str(
+                            document.get("title")
+                            or document.get("saved_file_name")
+                            or document.get("file_name")
+                            or ""
+                        )
+                        if document is not None
+                        else None
+                    ),
                     page=self._safe_int(passage.get("page_number")) if passage is not None else None,
                     section=str(section.get("title") or section.get("name") or "") if section is not None else None,
                     score=self._safe_float(evidence.get("confidence") if evidence is not None else None),

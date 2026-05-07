@@ -64,8 +64,9 @@ app.add_middleware(
 # Include API router with /api prefix
 app.include_router(router, prefix="/api")
 
-# Create uploaded_docs directory if it doesn't exist
-UPLOADED_DOCS_DIR = Path(__file__).parent.parent.parent / "uploaded_docs"
+# Create uploaded_docs directory if it doesn't exist.
+# Keep this path aligned with SemanticIngestionService.uploaded_docs_dir.
+UPLOADED_DOCS_DIR = Path(__file__).parent.parent / "uploaded_docs"
 UPLOADED_DOCS_DIR.mkdir(exist_ok=True)
 
 # Mount static files for PDF access

@@ -71,6 +71,7 @@ export interface Document {
   id: string;
   document_uid?: string;
   name: string;
+  fallback_name?: string;
   label?: string;
   created_at?: string;
 }

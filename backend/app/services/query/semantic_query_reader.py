@@ -375,8 +375,8 @@ class SemanticQueryReader:
             return None
         name = (
             document.get("title")
-            or document.get("file_name")
             or document.get("saved_file_name")
+            or document.get("file_name")
             or document.get("name")
         )
         return str(name) if name else None

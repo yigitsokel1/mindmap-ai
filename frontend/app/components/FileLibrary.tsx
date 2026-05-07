@@ -71,19 +71,21 @@ export default function FileLibrary() {
             return;
           }
           const fileName = node.properties?.file_name as string | undefined;
+          const savedFileName = node.properties?.saved_file_name as string | undefined;
           const title = node.properties?.title as string | undefined;
           const displayName = resolveDocumentDisplayName(
             fileName,
             title,
             prettifyDocumentId(uid)
           );
-          const resolvedFileName = fileName || (node.properties?.saved_file_name as string | undefined) || "";
+          const resolvedFileName = savedFileName || fileName || "";
 
           if (!docMap.has(node.id)) {
             docMap.set(node.id, {
               id: node.id,
               document_uid: uid,
               name: resolvedFileName,
+              fallback_name: fileName || undefined,
               label: displayName,
             });
           }
@@ -251,14 +253,34 @@ export default function FileLibrary() {
     setSelectedDocumentId(doc.document_uid || null);
   };
 
-  const handleOpenDocument = (doc: Document) => {
-    if (!doc.name) {
+  const resolveOpenablePdf = async (doc: Document): Promise<string | null> => {
+    const candidates = Array.from(new Set([doc.name, doc.fallback_name].filter(Boolean))) as string[];
+    for (const candidate of candidates) {
+      const candidateUrl = API_ENDPOINTS.STATIC(candidate);
+      try {
+        const probe = await fetch(candidateUrl, { method: "HEAD" });
+        if (probe.ok) {
+          return candidateUrl;
+        }
+      } catch {
+        // Try the next candidate filename.
+      }
+    }
+    return null;
+  };
+
+  const handleOpenDocument = async (doc: Document) => {
+    if (!doc.name && !doc.fallback_name) {
       setUploadError("This document does not have a downloadable file name.");
       return;
     }
-    const pdfUrl = API_ENDPOINTS.STATIC(doc.name);
+    const pdfUrl = await resolveOpenablePdf(doc);
+    if (!pdfUrl) {
+      setUploadError("PDF file was not found on static storage for this document.");
+      return;
+    }
     setSelectedDocumentId(doc.document_uid || null);
-    openPDFViewer(pdfUrl, resolveDocumentDisplayName(doc.name, doc.label, doc.id), 1);
+    openPDFViewer(pdfUrl, resolveDocumentDisplayName(doc.name || doc.fallback_name, doc.label, doc.id), 1);
   };
 
   return (

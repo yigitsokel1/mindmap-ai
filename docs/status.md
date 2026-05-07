@@ -20,9 +20,10 @@ Sprint 24 tamamlandı. Sprint 25 hedefi: portfolio deployment — CORS fix, env 
 - [x] `npm run build` çalıştır, hata varsa düzelt
 - [x] Neo4j AuraDB free tier için production env şablonu eklendi (`backend/.env.production.example`)
 - [x] Production Neo4j'e seed data çalıştır (`seed_smoke_graph.py`)
-- [ ] Backend deploy (Render) — mevcut `mindmap-ai-backend.onrender.com` endpoint'i FastAPI route döndürmüyor (`/` ve `/api/*` 404)
+- [x] Backend deploy (Render) — production backend ayakta
 - [x] Frontend deploy (Vercel) — `https://frontend-kappa-rosy-63.vercel.app`
-- [ ] Deploy sonrası demo path doğrula (production URL üzerinden) — backend route sorunu nedeniyle bloklu
+- [x] Deploy sonrası demo path doğrula (production URL üzerinden)
+- [x] PDF static 404 düzeltmesi: `/static` mount path `backend/uploaded_docs` ile hizalandı
 
 ## Backlog (Sprint 26+ adayları)
 - SemanticGraphViewer + FileLibrary upload testleri
@@ -35,5 +36,5 @@ Sprint 24 tamamlandı. Sprint 25 hedefi: portfolio deployment — CORS fix, env 
 - [x] `run_semantic_eval.py` — intent 100%, evidence 100%, hallucination 0% (2026-04-27)
 - [x] `npm run test:e2e` — 6 passed (2026-04-27)
 - [x] Demo path çalışıyor (localhost, 2026-04-27)
-- [ ] Production deploy ayakta — Sprint 25 (frontend ayakta, backend route sorunu var)
-- [ ] Demo path production URL'de çalışıyor — Sprint 25 (backend blokajı)
+- [x] Production deploy ayakta — Sprint 25
+- [x] Demo path production URL'de çalışıyor — Sprint 25
