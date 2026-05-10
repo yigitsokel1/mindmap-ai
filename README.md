@@ -8,7 +8,7 @@
 
 Upload academic PDFs, explore their knowledge as a 3D semantic graph, and get evidence-backed answers grounded in the document graph — not hallucinated summaries.
 
-**Live demo:** [https://frontend-kappa-rosy-63.vercel.app](https://frontend-kappa-rosy-63.vercel.app)
+**Live demo:** [https://mindmap-ai.osmanyigitsokel.com](https://mindmap-ai.osmanyigitsokel.com)
 
 ---
 
