@@ -1,7 +1,7 @@
 # Status — Sprint 27
 
 ## Şu an neredeyiz
-Sprint 26 tamamlandı ve commit edildi. Sprint 27 başladı: deploy review, güvenlik düzeltmeleri, kalite sorunları.
+Sprint 27 tamamlandı. Proje portfolyo-ready durumda: 161 backend + 58 frontend + 6 e2e test, deploy ayakta (Render + Vercel), Launch Checklist tümü ✅.
 
 ## Sprint Geçmişi
 - Sprint 1-9 ✅ — Temel ingestion, extraction, legacy RAG
@@ -12,6 +12,9 @@ Sprint 26 tamamlandı ve commit edildi. Sprint 27 başladı: deploy review, güv
 - Sprint 22 ✅ — Product readiness review, UI iyileştirme
 - Sprint 23 ✅ — Schema sync, dead code temizliği, UI refactor, testler yeşil, eval fix
 - Sprint 24 ✅ — Extraction pipeline testleri, hallucination guard, demo path doğrulandı (uncommitted)
+- Sprint 25 ✅ — Production deploy (Render + Vercel), CORS env var, PDF 404 fix
+- Sprint 26 ✅ — PDF metin highlight (react-pdf), CitationChip, genişletilmiş test suite (161+58+6)
+- Sprint 27 ✅ — Deploy review, CORS hardening, InsightBuilder fix (%0→%89), docs temizliği
 
 ## Sprint 25 — Görevler
 - [x] Sprint 24 uncommitted iş commit'le (kullanıcı tarafından tamamlandı)
@@ -36,8 +39,10 @@ Sprint 26 tamamlandı ve commit edildi. Sprint 27 başladı: deploy review, güv
 ## Sprint 27 — Görevler
 - [x] Sprint 26 çıktıları commit edildi (15 dosya, 1808 ekleme)
 - [x] CORS allow_methods ve allow_headers kısıtlandı (`main.py`)
-- [ ] `/api/extract` endpoint'i router'a kaydedilecek veya legacy'e taşınacak
-- [ ] InsightBuilder insight üretmiyor — araştır ve düzelt
+- [x] `/api/extract` → router'da kasıtlı dışarıda (LLM maliyet güvencesi), architecture.md'de belgelendi
+- [x] InsightBuilder fix: EvidenceClusterer cluster key düzeltildi, eval fixtures zenginleştirildi → insight presence %0→%89
+- [x] 6 stale docs dosyası silindi
+- [x] README portfolyo için güncellendi
 
 ## Backlog (Sprint 28+ adayları)
 - Semantic eval canonical link precision %48 → iyileştirme
