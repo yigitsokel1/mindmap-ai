@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(pip install:*)",
-      "Bash(poetry run *)"
+      "Bash(poetry run *)",
+      "Bash(xargs ls -la)"
     ]
   }
 }
