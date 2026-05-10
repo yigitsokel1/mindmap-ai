@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Send, Loader2, MessageSquare, FolderOpen, X, Lightbulb, Network, AlertTriangle } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
@@ -348,31 +348,67 @@ export default function CommandCenter() {
       : semanticResult?.confidence_badge === "WEAK_GROUNDING"
         ? "Weak Grounding"
         : "No Grounding";
-  const primaryEvidence = semanticResult?.evidence[0] || semanticResult?.clusters?.[0]?.evidences?.[0] || null;
-  const primaryCitation = semanticResult?.citations?.[0] || null;
-  const primarySource = primaryEvidence
-    ? {
-        kind: "evidence" as const,
-        label: resolveDocumentDisplayName(
-          primaryEvidence.document_name ?? undefined,
+  const prominentSources = useMemo(() => {
+    if (!semanticResult) return [];
+    const cards: Array<{
+      key: string;
+      label: string;
+      page?: number;
+      snippet: string;
+      onClick: () => void;
+    }> = [];
+    const seen = new Set<string>();
+
+    const seenDocPage = new Set<string>();
+
+    for (const item of semanticResult.evidence.slice(0, 10)) {
+      const docLabel = resolveDocumentDisplayName(
+        item.document_name ?? undefined,
+        undefined,
+        item.document_id ?? "Unknown document"
+      );
+      const docPageKey = `${docLabel}:${item.page ?? "na"}`;
+      if (seenDocPage.has(docPageKey)) continue;
+      seenDocPage.add(docPageKey);
+      const key = `e:${docLabel}:${item.page ?? "na"}:${item.snippet.slice(0, 40)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      cards.push({
+        key,
+        label: docLabel,
+        page: item.page ?? undefined,
+        snippet: item.snippet || "Evidence snippet is unavailable.",
+        onClick: () => handleEvidenceClick(item),
+      });
+      if (cards.length >= 3) break;
+    }
+
+    if (cards.length < 3) {
+      for (const citation of semanticResult.citations.slice(0, 5)) {
+        const docLabel = resolveDocumentDisplayName(
+          citation.document_name ?? undefined,
           undefined,
-          primaryEvidence.document_id ?? "Unknown document"
-        ),
-        page: primaryEvidence.page ?? undefined,
-        snippet: primaryEvidence.snippet,
+          citation.document_name ?? "Unknown document"
+        );
+        const docPageKey = `${docLabel}:${citation.page ?? "na"}`;
+        if (seenDocPage.has(docPageKey)) continue;
+        seenDocPage.add(docPageKey);
+        const key = `c:${docLabel}:${citation.page ?? "na"}:${citation.label}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        cards.push({
+          key,
+          label: docLabel,
+          page: citation.page ?? undefined,
+          snippet: citation.label || "Citation label unavailable.",
+          onClick: () => handleCitationClick(citation),
+        });
+        if (cards.length >= 3) break;
       }
-    : primaryCitation
-      ? {
-          kind: "citation" as const,
-          label: resolveDocumentDisplayName(
-            primaryCitation.document_name ?? undefined,
-            undefined,
-            primaryCitation.document_name ?? "Unknown document"
-          ),
-          page: primaryCitation.page ?? undefined,
-          snippet: primaryCitation.label,
-        }
-      : null;
+    }
+
+    return cards;
+  }, [semanticResult]);
 
   return (
     <AnimatePresence mode="wait">
@@ -504,32 +540,31 @@ export default function CommandCenter() {
                       </p>
                     )}
                   </div>
-                  <div className="bg-black/20 border border-white/10 rounded px-3 py-2">
-                    <p className="text-[10px] uppercase tracking-wide text-cyan-300 font-mono mb-2">Source</p>
-                    {primarySource ? (
-                      <button
-                        className="w-full text-left bg-black/30 border border-white/10 rounded px-2 py-2 hover:bg-white/5"
-                        onClick={() => {
-                          if (primarySource.kind === "evidence" && primaryEvidence) {
-                            handleEvidenceClick(primaryEvidence);
-                            return;
-                          }
-                          if (primaryCitation) {
-                            handleCitationClick(primaryCitation);
-                          }
-                        }}
-                        data-testid="primary-source-button"
-                      >
-                        <p className="text-[11px] text-white/85 font-mono">
-                          {primarySource.label}
-                          {primarySource.page ? ` · page ${primarySource.page}` : ""}
-                        </p>
-                        {primarySource.snippet && (
-                          <p className="text-[10px] text-white/65 font-mono mt-1 line-clamp-2">{primarySource.snippet}</p>
-                        )}
-                      </button>
+                  <div className="bg-amber-500/10 border border-amber-400/40 rounded px-3 py-2">
+                    <p className="text-[10px] uppercase tracking-wide text-amber-200 font-mono mb-2">
+                      Source
+                    </p>
+                    {prominentSources.length > 0 ? (
+                      <div className="space-y-2">
+                        {prominentSources.map((source, idx) => (
+                          <button
+                            key={source.key}
+                            className="w-full text-left bg-black/35 border border-amber-300/25 rounded px-2.5 py-2 hover:bg-black/50"
+                            onClick={source.onClick}
+                            data-testid={idx === 0 ? "primary-source-button" : `primary-source-button-${idx}`}
+                          >
+                            <p className="text-[11px] text-amber-100 font-mono">
+                              {source.label}
+                              {source.page ? ` · page ${source.page}` : ""}
+                            </p>
+                            <p className="text-[10px] text-white/75 font-mono mt-1 line-clamp-2">{source.snippet}</p>
+                          </button>
+                        ))}
+                      </div>
                     ) : (
-                      <p className="text-[10px] text-white/60 font-mono">Derived semantic answer (no direct source match)</p>
+                      <p className="text-[10px] text-white/60 font-mono">
+                        Derived semantic answer (no direct source match)
+                      </p>
                     )}
                   </div>
                   <details className="bg-black/20 border border-white/10 rounded px-3 py-2">

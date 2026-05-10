@@ -48,11 +48,19 @@ interface GraphViewerHandle {
   d3ReheatSimulation?: () => void;
   d3AlphaDecay?: (value: number) => void;
   d3VelocityDecay?: (value: number) => void;
+  zoomToFit?: (ms?: number, px?: number, nodeFilterFn?: (node: object) => boolean) => void;
+  d3Force?: (name: string, force?: unknown) => { distance?: (v: number) => unknown } | undefined;
 }
 
 export default function SemanticGraphViewer() {
   const forceGraphRef = useRef<unknown>(undefined) as NonNullable<ComponentProps<typeof ForceGraph3D>["ref"]>;
   const graphRef = forceGraphRef as unknown as MutableRefObject<GraphViewerHandle | null>;
+  const lastZoomFitKeyRef = useRef<string>("");
+  const lastFocusKeyRef = useRef<string>("");
+  const [viewport, setViewport] = useState(() => ({
+    width: typeof window !== "undefined" ? window.innerWidth : 1024,
+    height: typeof window !== "undefined" ? window.innerHeight : 768,
+  }));
   const [graphData, setGraphData] = useState<GraphRenderData>({ nodes: [], links: [] });
   const [graphMeta, setGraphMeta] = useState<GraphMeta>({ counts: {}, filters_applied: {} });
   const [isLoading, setIsLoading] = useState(true);
@@ -75,6 +83,14 @@ export default function SemanticGraphViewer() {
   const [debouncedFilterKey, setDebouncedFilterKey] = useState<string>("");
 
   const hasDocumentFilter = Boolean(graphFilters.document_id);
+
+  useEffect(() => {
+    const update = () =>
+      setViewport({ width: window.innerWidth, height: window.innerHeight });
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
 
   useEffect(() => {
     const nextKey = JSON.stringify({
@@ -137,26 +153,6 @@ export default function SemanticGraphViewer() {
       cancelled = true;
     };
   }, [debouncedFilterKey, graphFilters, selectedDocumentId, hasDocumentFilter, graphRefreshToken]);
-
-  useEffect(() => {
-    if (!graphRef.current) return;
-    const priorityTargets = [primaryFocusNodeId, ...secondaryFocusNodeIds].filter((id): id is string => Boolean(id));
-    if (priorityTargets.length === 0) return;
-    const targetNode = graphData.nodes.find((node) => priorityTargets.includes(node.id));
-    if (!targetNode) return;
-
-    const distance = 130;
-    const x = targetNode.x || 0;
-    const y = targetNode.y || 0;
-    const z = targetNode.z || 0;
-    const distRatio = 1 + distance / Math.hypot(x, y, z || 1);
-
-    graphRef.current.cameraPosition(
-      { x: x * distRatio, y: y * distRatio, z: z * distRatio },
-      { x, y, z },
-      1200
-    );
-  }, [primaryFocusNodeId, secondaryFocusNodeIds, graphData]);
 
   const degreeByNode = useMemo(() => {
     const degreeMap = new Map<string, number>();
@@ -259,6 +255,12 @@ export default function SemanticGraphViewer() {
     return { nodes: keptNodes, links: keptLinks };
   }, [focusedGraphState, highlightedNodeIds]);
 
+  const boundedGraphFitKey = useMemo(() => {
+    if (boundedGraphData.nodes.length === 0) return "";
+    const ids = boundedGraphData.nodes.map((n) => n.id).sort();
+    return `${boundedGraphData.nodes.length}:${boundedGraphData.links.length}:${ids.join(",")}`;
+  }, [boundedGraphData]);
+
   const neighborsByNode = useMemo(() => {
     const byNode = new Map<string, Set<string>>();
     for (const link of boundedGraphData.links) {
@@ -275,14 +277,32 @@ export default function SemanticGraphViewer() {
 
   useEffect(() => {
     if (!graphRef.current) return;
-    graphRef.current.d3AlphaDecay?.(0.045);
-    graphRef.current.d3VelocityDecay?.(0.38);
-  }, []);
+    const priorityTargets = [primaryFocusNodeId, ...secondaryFocusNodeIds].filter((id): id is string => Boolean(id));
+    if (priorityTargets.length === 0) {
+      lastFocusKeyRef.current = "";
+      return;
+    }
+
+    const focusTargetId = primaryFocusNodeId || priorityTargets[0];
+    if (!focusTargetId) return;
+    const focusKey = focusTargetId;
+    if (focusKey === lastFocusKeyRef.current) return;
+    const targetNode = boundedGraphData.nodes.find((node) => node.id === focusTargetId);
+    if (!targetNode) return;
+
+    lastFocusKeyRef.current = focusKey;
+    graphRef.current.zoomToFit?.(800, 140, (node) => {
+      const candidate = node as { id?: unknown };
+      return candidate.id === targetNode.id;
+    });
+  }, [primaryFocusNodeId, secondaryFocusNodeIds, boundedGraphData.nodes]);
 
   useEffect(() => {
     if (!graphRef.current) return;
     const frame = requestAnimationFrame(() => {
       try {
+        const linkForce = graphRef.current?.d3Force?.("link");
+        linkForce?.distance?.(52);
         graphRef.current?.d3ReheatSimulation?.();
       } catch {
         // Ignore force-engine transient errors during hot reload.
@@ -290,6 +310,33 @@ export default function SemanticGraphViewer() {
     });
     return () => cancelAnimationFrame(frame);
   }, [boundedGraphData]);
+
+  useEffect(() => {
+    if (boundedGraphData.nodes.length === 0) {
+      lastZoomFitKeyRef.current = "";
+      return;
+    }
+    const hasFocusTargets = Boolean(primaryFocusNodeId) || secondaryFocusNodeIds.length > 0;
+    if (hasFocusTargets) return;
+    if (!boundedGraphFitKey) return;
+    if (lastZoomFitKeyRef.current === boundedGraphFitKey) return;
+    lastZoomFitKeyRef.current = boundedGraphFitKey;
+
+    const timer = window.setTimeout(() => {
+      try {
+        graphRef.current?.zoomToFit?.(650, 56);
+      } catch {
+        // Ignore transient errors during hot reload.
+      }
+    }, 200);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    boundedGraphFitKey,
+    boundedGraphData.nodes.length,
+    primaryFocusNodeId,
+    secondaryFocusNodeIds.length,
+  ]);
 
   const handleNodeClick = (node: GraphNode) => {
     const properties = node.properties || {};
@@ -435,8 +482,26 @@ export default function SemanticGraphViewer() {
       <ForceGraph3D
         // @ts-expect-error - upstream ref generics are broader than local graph node typing
         ref={forceGraphRef}
+        width={viewport.width}
+        height={viewport.height}
         graphData={boundedGraphData}
         backgroundColor="#000000"
+        showNavInfo={false}
+        cooldownTime={Infinity}
+        cooldownTicks={Infinity}
+        d3AlphaDecay={0.005}
+        d3AlphaMin={0}
+        d3VelocityDecay={0.3}
+        warmupTicks={48}
+        nodeResolution={6}
+        linkResolution={5}
+        onEngineStop={() => {
+          try {
+            graphRef.current?.d3ReheatSimulation?.();
+          } catch {
+            // Ignore transient force-engine stop/reheat failures.
+          }
+        }}
         nodeColor={(node: GraphNode) => {
           if (selectedNodeId === node.id || primaryFocusNodeId === node.id) return "#f8fafc";
           if (secondaryFocusNodeIds.includes(node.id)) return "#cbd5e1";
