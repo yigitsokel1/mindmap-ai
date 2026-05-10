@@ -21,6 +21,7 @@ Bir görev şu koşullar sağlanmadan bitmez:
 ## Scope kuralları
 - "Bunu da eklesek iyi olur" → HAYIR, status.md'ye backlog olarak yaz
 - Legacy klasörüne dokunmak için gerekçe şart
+- Legacy ingest path production endpointte varsayılan değil; sadece internal/dev compatibility amacıyla açılabilir.
 - Yeni node tipi eklemek → önce architecture.md'ye ekle, sonra kodu yaz
 - Schema değişikliği → backend + frontend aynı anda güncellenmeli
 

@@ -23,6 +23,7 @@ from backend.app.services.parsing.document_parser import parse_document, ParseRe
 from backend.app.services.extraction.pipeline import ExtractionPipeline, PipelineResult
 from backend.app.services.graph.graph_writer import GraphWriter
 from backend.app.services.graph.writers.document_writer import DocumentStructureWriter
+from backend.app.core.security import security_config
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -144,6 +145,10 @@ class SemanticIngestionService:
             document_id,
             progress_callback=progress_callback,
         )
+        if len(parse_result.pages) > security_config.max_upload_pages:
+            raise ValueError(
+                f"PDF page limit exceeded ({len(parse_result.pages)} pages). Max allowed is {security_config.max_upload_pages}."
+            )
         logger.info(
             "Parsed document metrics: document_id=%s pages_total=%d sections_total=%d body_passages_total=%d",
             document_id,

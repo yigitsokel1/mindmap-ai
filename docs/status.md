@@ -1,7 +1,11 @@
 # Status — Sprint 27
 
 ## Şu an neredeyiz
-Sprint 27 tamamlandı. Proje portfolyo-ready durumda: 161 backend + 58 frontend + 6 e2e test, deploy ayakta (Render + Vercel), Launch Checklist tümü ✅.
+Sprint 27 tamamlandı. Proje deployment-ready demo durumda: 161 backend + 58 frontend + 6 e2e test, deploy ayakta (Render + Vercel), Launch Checklist tümü ✅.
+
+## Positioning (net)
+- Deployed research demo with production-oriented safeguards planned.
+- Production-hardening pending: auth policy, stronger rate limits, stricter upload guardrails, storage access isolation.
 
 ## Sprint Geçmişi
 - Sprint 1-9 ✅ — Temel ingestion, extraction, legacy RAG
@@ -50,6 +54,7 @@ Sprint 27 tamamlandı. Proje portfolyo-ready durumda: 161 backend + 58 frontend 
 - Auth (API key veya JWT) — production-hardening
 - Rate limiting — production-hardening
 - Security headers (HSTS, CSP) — production-hardening
+- Static PDF serving hardening (signed URL + user isolation) — production-hardening
 
 ## Launch Checklist Durumu
 - [x] `poetry run pytest backend/tests` — 161 passed (2026-05-10)

@@ -7,9 +7,13 @@ import shutil
 import tempfile
 import time
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 
-from backend.app.legacy.services.ingestion.legacy_ingestion_service import IngestionService
+from backend.app.core.security import (
+    enforce_ingest_rate_limit,
+    require_api_key,
+    security_config,
+)
 from backend.app.services.ingestion.ingest_job_store import ingest_job_store
 from backend.app.services.ingestion.semantic_ingestion_service import SemanticIngestionService
 
@@ -18,17 +22,22 @@ router = APIRouter()
 
 @router.post("/ingest")
 async def ingest(
+    request: Request,
     file: UploadFile = File(..., description="PDF file to ingest"),
     mode: str = "semantic",
+    _api_key: None = Depends(require_api_key),
 ):
     """Ingest a PDF file into either semantic or legacy pipelines."""
     logger = logging.getLogger("uvicorn.error")
     started_at = time.perf_counter()
+    enforce_ingest_rate_limit(request)
 
     if not file.filename:
         raise HTTPException(status_code=400, detail="No file provided")
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+    if file.content_type not in {"application/pdf", "application/x-pdf"}:
+        raise HTTPException(status_code=400, detail="Invalid MIME type. Upload a PDF file.")
 
     safe_filename = "".join(c for c in file.filename if c.isalnum() or c in "._-")
     if not safe_filename:
@@ -42,11 +51,25 @@ async def ingest(
     try:
         logger.info("Ingest request accepted: file=%s mode=%s", file.filename, mode)
         job = ingest_job_store.create_job(file_name=file.filename, mode=mode)
+        file.file.seek(0, os.SEEK_END)
+        size_bytes = file.file.tell()
+        file.file.seek(0)
+        if size_bytes > security_config.max_upload_bytes:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large. Max allowed size is {security_config.max_upload_mb} MB.",
+            )
         with open(temp_file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
         original_filename = file.filename
         if mode == "legacy":
+            if not security_config.allow_legacy_ingest:
+                raise HTTPException(status_code=403, detail="Legacy ingest is disabled in this environment.")
+            from backend.app.legacy.services.ingestion.legacy_ingestion_service import (
+                IngestionService,
+            )
+
             service = IngestionService()
             try:
                 ingest_job_store.update_stage(job.job_id, "parsing")
@@ -171,7 +194,7 @@ async def ingest(
 
 
 @router.get("/ingest/{job_id}")
-async def ingest_status(job_id: str):
+async def ingest_status(job_id: str, _api_key: None = Depends(require_api_key)):
     """Return stage-based status for an ingestion job."""
     job = ingest_job_store.get_job(job_id)
     if not job:

@@ -45,6 +45,11 @@ SemanticIngestionService
       → CitationWriter, CanonicalWriter
 ```
 
+Model/provider truth for active runtime:
+- `backend/app/services/ingestion/semantic_ingestion_service.py`
+- `backend/app/services/extraction/llm_extractor.py` (`OpenAI`, default `gpt-4.1`)
+- Legacy provider paths are compatibility-only and not default production ingest behavior.
+
 ### Query Pipeline V2 (Sprint 21+)
 ```
 SemanticQueryService

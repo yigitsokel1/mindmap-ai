@@ -3,9 +3,10 @@
 import logging
 import time
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from backend.app.schemas.semantic_query import SemanticQueryAnswer, SemanticQueryRequest
+from backend.app.core.security import enforce_query_rate_limit, require_api_key
 from backend.app.services.query.semantic_query_service import (
     SemanticQueryService,
     SemanticQueryServiceError,
@@ -23,9 +24,14 @@ ERROR_TO_STATUS = {
 
 
 @router.post("/query/semantic", response_model=SemanticQueryAnswer)
-async def semantic_query(request: SemanticQueryRequest) -> SemanticQueryAnswer:
+async def semantic_query(
+    request: SemanticQueryRequest,
+    http_request: Request,
+    _api_key: None = Depends(require_api_key),
+) -> SemanticQueryAnswer:
     """Answer a semantic question using evidence-backed graph retrieval."""
     started_at = time.perf_counter()
+    enforce_query_rate_limit(http_request)
     try:
         service = SemanticQueryService()
         response = service.answer(request)

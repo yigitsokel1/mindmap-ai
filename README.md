@@ -25,8 +25,8 @@ Upload academic PDFs, explore their knowledge as a 3D semantic graph, and get ev
 
 | Layer | Technology |
 |-------|-----------|
-| **LLM** | Llama-3.3-70b via Groq API |
-| **Embeddings** | OpenAI text-embedding-3-small |
+| **LLM** | OpenAI GPT-4.1 (extraction + semantic QA composition helpers) |
+| **Embeddings** | Not used in active semantic path (legacy compatibility only) |
 | **Graph DB** | Neo4j (AuraDB in production) |
 | **Backend** | FastAPI + LangChain + Poetry |
 | **Frontend** | Next.js 16, React 19, Zustand |
@@ -80,7 +80,6 @@ Full contract: [`docs/graph_contract.md`](docs/graph_contract.md)
 - Python 3.10+
 - Node.js 18+
 - Neo4j instance (local or [AuraDB free tier](https://neo4j.com/cloud/platform/aura-graph-database/))
-- [Groq API key](https://console.groq.com/)
 - [OpenAI API key](https://platform.openai.com/api-keys)
 
 ### 1. Install
@@ -103,8 +102,8 @@ NEO4J_URI=bolt://localhost:7687
 NEO4J_USERNAME=neo4j
 NEO4J_PASSWORD=your_password
 
-GROQ_API_KEY=gsk_...
 OPENAI_API_KEY=sk-...
+SEMANTIC_API_KEY=change_me_for_shared_env
 ```
 
 ### 3. Run
@@ -150,6 +149,31 @@ poetry run python backend/tools/run_semantic_eval.py
 | Hallucination rate | 0% |
 | Evidence presence | 74% |
 | Insight presence | 89% |
+
+---
+
+## Deployment Positioning
+
+This project is a deployed research demo with production-oriented safeguards in progress.
+
+- Current deployment is suitable for portfolio/demo workloads.
+- Production hardening still planned: auth enforcement, stronger rate-limits, stricter upload controls, and storage access isolation.
+
+## Storage & PDF Access
+
+PDF files are currently served from a demo static mount (`/static/...`) for same-origin UX simplicity.
+
+- This is intentionally a demo-storage contract.
+- Production target is stricter access control (signed URLs, user isolation, scoped file access policy).
+
+## Model Provider Truth Source
+
+Active runtime truth is in backend services:
+
+- `backend/app/services/ingestion/semantic_ingestion_service.py`
+- `backend/app/services/extraction/llm_extractor.py`
+
+If docs and code ever diverge, code is authoritative for active runtime behavior.
 
 ---
 

@@ -21,7 +21,8 @@ export const API_ENDPOINTS = {
   QUERY_SEMANTIC: apiUrl("/api/query/semantic"),
   INGEST: apiUrl("/api/ingest"),
   INGEST_STATUS: (jobId: string) => apiUrl(`/api/ingest/${encodeURIComponent(jobId)}`),
-  // Keep PDF fetch same-origin via Next rewrite to avoid webview/CORS/range issues.
+  // Demo storage contract: PDF is served via same-origin /static rewrite.
+  // Production target should move to signed/scoped file access.
   STATIC: (filename: string) => `/static/${encodeURIComponent(filename)}`,
 } as const;
 
