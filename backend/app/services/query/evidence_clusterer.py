@@ -26,7 +26,7 @@ class EvidenceClusterer:
             entity_name = self._resolve_entity_name(item, entity_by_id)
             relation = (item.relation_type or "RELATED_TO").upper()
             normalized_snippet = self._normalize_text(item.snippet)
-            cluster_key = f"{self._normalize_text(entity_name)}::{relation}::{normalized_snippet[:72]}"
+            cluster_key = f"{self._normalize_text(entity_name)}::{relation}"
             if normalized_snippet in seen_by_cluster[cluster_key]:
                 continue
             seen_by_cluster[cluster_key].add(normalized_snippet)

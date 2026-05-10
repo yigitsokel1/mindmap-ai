@@ -13,7 +13,7 @@ PDF → parse → LLM extract → normalize → Neo4j write → semantic query
 | `GET /api/graph/semantic` | `api/graph.py` | Primary |
 | `GET /api/graph/node/{id}` | `api/graph.py` | Primary |
 | `POST /api/query/semantic` | `api/query.py` | Primary |
-| `POST /api/extract` | `api/extract.py` | Diagnostik |
+| `POST /api/extract` | `api/extract.py` | Diagnostik — test conftest'te kullanılır, prod router'a dahil değil |
 
 ## Graph Modeli — DOĞRU PATTERN (reified)
 ```

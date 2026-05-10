@@ -25,6 +25,20 @@
           "reference_entry_id": "ref-vaswani-2017"
         },
         {
+          "entity_id": "m-transformer",
+          "relation_type": "USES",
+          "snippet": "Multi-head attention allows the Transformer to jointly attend to different positions.",
+          "section": "Methods",
+          "page": 5
+        },
+        {
+          "entity_id": "m-transformer",
+          "relation_type": "USES",
+          "snippet": "Positional encodings are added to enable the Transformer to use sequence order information.",
+          "section": "Methods",
+          "page": 6
+        },
+        {
           "entity_id": "c-self-attention",
           "relation_type": "SUPPORTS",
           "snippet": "Self-attention layers enable long-range dependency modeling in sequence tasks.",
@@ -82,6 +96,20 @@
           "snippet": "RAG pipelines retrieve candidate passages before generation.",
           "section": "System",
           "page": 3
+        },
+        {
+          "entity_id": "m-rag",
+          "relation_type": "USES",
+          "snippet": "Retrieval-Augmented Generation combines a dense retriever with a generative decoder.",
+          "section": "System",
+          "page": 4
+        },
+        {
+          "entity_id": "m-rag",
+          "relation_type": "USES",
+          "snippet": "RAG grounds generation in retrieved documents to reduce hallucination.",
+          "section": "System",
+          "page": 5
         },
         {
           "entity_id": "m-cross-encoder",
