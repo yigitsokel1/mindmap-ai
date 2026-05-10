@@ -21,6 +21,22 @@ function asNumber(value: unknown): number | undefined {
   return undefined;
 }
 
+function getNodeId(value: unknown): string | undefined {
+  if (typeof value === "string" && value) return value;
+  if (value && typeof value === "object" && "id" in value) {
+    const id = (value as { id?: unknown }).id;
+    return typeof id === "string" && id ? id : undefined;
+  }
+  return undefined;
+}
+
+function normalizePageNumber(value: unknown): number | undefined {
+  const page = asNumber(value);
+  if (typeof page !== "number") return undefined;
+  // Backend page values may still arrive as zero-based depending on node property source.
+  return page >= 0 ? page + 1 : page;
+}
+
 type CameraPosition = { x: number; y: number; z: number };
 
 interface GraphViewerHandle {
@@ -145,8 +161,9 @@ export default function SemanticGraphViewer() {
   const degreeByNode = useMemo(() => {
     const degreeMap = new Map<string, number>();
     for (const link of graphData.links) {
-      const source = typeof link.source === "string" ? link.source : link.source.id;
-      const target = typeof link.target === "string" ? link.target : link.target.id;
+      const source = getNodeId(link.source);
+      const target = getNodeId(link.target);
+      if (!source || !target) continue;
       degreeMap.set(source, (degreeMap.get(source) || 0) + 1);
       degreeMap.set(target, (degreeMap.get(target) || 0) + 1);
     }
@@ -166,8 +183,9 @@ export default function SemanticGraphViewer() {
     const structuralFilteredNodes = graphData.nodes;
     const nodeIdSet = new Set(structuralFilteredNodes.map((node) => node.id));
     const structuralFilteredLinks = graphData.links.filter((link) => {
-      const source = typeof link.source === "string" ? link.source : link.source.id;
-      const target = typeof link.target === "string" ? link.target : link.target.id;
+      const source = getNodeId(link.source);
+      const target = getNodeId(link.target);
+      if (!source || !target) return false;
       return nodeIdSet.has(source) && nodeIdSet.has(target);
     });
     if (!graphFocusRelevantOnly || highlightedNodeIds.length === 0) {
@@ -175,14 +193,16 @@ export default function SemanticGraphViewer() {
     }
     const highlighted = new Set(highlightedNodeIds);
     const focusedLinks = structuralFilteredLinks.filter((link) => {
-      const source = typeof link.source === "string" ? link.source : link.source.id;
-      const target = typeof link.target === "string" ? link.target : link.target.id;
+      const source = getNodeId(link.source);
+      const target = getNodeId(link.target);
+      if (!source || !target) return false;
       return highlighted.has(source) || highlighted.has(target);
     });
     const focusedNodeIds = new Set<string>(highlightedNodeIds);
     for (const link of focusedLinks) {
-      const source = typeof link.source === "string" ? link.source : link.source.id;
-      const target = typeof link.target === "string" ? link.target : link.target.id;
+      const source = getNodeId(link.source);
+      const target = getNodeId(link.target);
+      if (!source || !target) continue;
       focusedNodeIds.add(source);
       focusedNodeIds.add(target);
     }
@@ -197,8 +217,9 @@ export default function SemanticGraphViewer() {
     const nodeById = new Map(focusedGraphState.nodes.map((node) => [node.id, node]));
     const degree = new Map<string, number>();
     for (const link of focusedGraphState.links) {
-      const source = typeof link.source === "string" ? link.source : link.source.id;
-      const target = typeof link.target === "string" ? link.target : link.target.id;
+      const source = getNodeId(link.source);
+      const target = getNodeId(link.target);
+      if (!source || !target) continue;
       degree.set(source, (degree.get(source) || 0) + 1);
       degree.set(target, (degree.get(target) || 0) + 1);
     }
@@ -207,41 +228,50 @@ export default function SemanticGraphViewer() {
       const aPriority = highlightedNodeIds.includes(a.id) ? 1 : 0;
       const bPriority = highlightedNodeIds.includes(b.id) ? 1 : 0;
       if (aPriority !== bPriority) return bPriority - aPriority;
-      return (degree.get(b.id) || 0) - (degree.get(a.id) || 0);
+      const degreeDelta = (degree.get(b.id) || 0) - (degree.get(a.id) || 0);
+      if (degreeDelta !== 0) return degreeDelta;
+      return a.id.localeCompare(b.id);
     });
     const keptNodes = priorityNodes.slice(0, GRAPH_LIMITS.MAX_NODES);
     const keptNodeIds = new Set(keptNodes.map((node) => node.id));
     const keptLinks = focusedGraphState.links
       .filter((link) => {
-        const source = typeof link.source === "string" ? link.source : link.source.id;
-        const target = typeof link.target === "string" ? link.target : link.target.id;
+        const source = getNodeId(link.source);
+        const target = getNodeId(link.target);
+        if (!source || !target) return false;
         return keptNodeIds.has(source) && keptNodeIds.has(target);
       })
+      .sort((a, b) => a.id.localeCompare(b.id))
       .slice(0, GRAPH_LIMITS.MAX_EDGES)
-      .map((link): GraphEdge => {
-        const source = typeof link.source === "string" ? link.source : link.source.id;
-        const target = typeof link.target === "string" ? link.target : link.target.id;
+      .map((link): GraphEdge | null => {
+        const source = getNodeId(link.source);
+        const target = getNodeId(link.target);
+        if (!source || !target) {
+          return null;
+        }
         return {
           ...link,
           source,
           target,
         };
-      });
+      })
+      .filter((link): link is GraphEdge => Boolean(link));
     return { nodes: keptNodes, links: keptLinks };
   }, [focusedGraphState, highlightedNodeIds]);
 
   const neighborsByNode = useMemo(() => {
     const byNode = new Map<string, Set<string>>();
     for (const link of boundedGraphData.links) {
-      const source = typeof link.source === "string" ? link.source : link.source.id;
-      const target = typeof link.target === "string" ? link.target : link.target.id;
+      const source = getNodeId(link.source);
+      const target = getNodeId(link.target);
+      if (!source || !target) continue;
       if (!byNode.has(source)) byNode.set(source, new Set());
       if (!byNode.has(target)) byNode.set(target, new Set());
       byNode.get(source)?.add(target);
       byNode.get(target)?.add(source);
     }
     return byNode;
-  }, [graphData.links]);
+  }, [boundedGraphData.links]);
 
   useEffect(() => {
     if (!graphRef.current) return;
@@ -269,9 +299,9 @@ export default function SemanticGraphViewer() {
       asString(properties.document_name) ||
       asString(properties.document_title);
     const page =
-      asNumber(properties.page) ??
-      asNumber(properties.page_number) ??
-      asNumber(properties.source_page);
+      normalizePageNumber(properties.page) ??
+      normalizePageNumber(properties.page_number) ??
+      normalizePageNumber(properties.source_page);
 
     const shortDescription =
       asString(properties.summary) ||
@@ -284,6 +314,7 @@ export default function SemanticGraphViewer() {
       title: nodeTitle,
       shortDescription,
       documentName: docName,
+      documentFileName: asString(properties.saved_file_name) || asString(properties.file_name),
       page,
       rawText: asString(properties.text) || asString(properties.surface_text),
       details: {
@@ -327,8 +358,12 @@ export default function SemanticGraphViewer() {
     ? "No document loaded"
     : `Filtered by document ${selectedDocumentId}`;
   const isGraphEmpty = boundedGraphData.nodes.length === 0;
-  const totalNodes = graphMeta.counts.nodes || graphData.nodes.length;
-  const filteredNodes = graphMeta.counts.in_scope_nodes || boundedGraphData.nodes.length;
+  const loadedNodes = graphData.nodes.length;
+  const loadedEdges = graphData.links.length;
+  const renderedNodes = boundedGraphData.nodes.length;
+  const renderedEdges = boundedGraphData.links.length;
+  const scopeNodes = graphMeta.counts.in_scope_nodes ?? loadedNodes;
+  const scopeEdges = graphMeta.counts.in_scope_edges ?? loadedEdges;
 
   return (
     <div className="w-screen h-screen fixed inset-0 z-0 bg-black">
@@ -337,12 +372,18 @@ export default function SemanticGraphViewer() {
           <div>
             <p className="text-[11px] text-cyan-200">{graphModeLabel}</p>
             <p className="text-[10px] text-white/70">{graphStateLabel}</p>
-            <p className="text-[10px] text-white/60">Showing {filteredNodes} / {totalNodes} nodes</p>
-            <p className="text-[10px] text-white/50">Filtered semantic view</p>
+            <p className="text-[10px] text-white/60">
+              Rendering {renderedNodes} / {loadedNodes} nodes ({renderedEdges} / {loadedEdges} edges)
+            </p>
+            <p className="text-[10px] text-white/50">
+              {hasDocumentFilter
+                ? `Document scope ${scopeNodes} nodes, ${scopeEdges} edges`
+                : "Filtered semantic view"}
+            </p>
           </div>
           <div className="text-right">
-            <p className="text-[10px] text-white/70">Nodes: {boundedGraphData.nodes.length}</p>
-            <p className="text-[10px] text-white/70">Edges: {boundedGraphData.links.length}</p>
+            <p className="text-[10px] text-white/70">Nodes: {renderedNodes}</p>
+            <p className="text-[10px] text-white/70">Edges: {renderedEdges}</p>
           </div>
         </div>
         {hasDocumentFilter && (
@@ -422,9 +463,9 @@ export default function SemanticGraphViewer() {
             asString(properties.document_name) ||
             asString(properties.document_title);
           const page =
-            asNumber(properties.page) ??
-            asNumber(properties.page_number) ??
-            asNumber(properties.source_page);
+            normalizePageNumber(properties.page) ??
+            normalizePageNumber(properties.page_number) ??
+            normalizePageNumber(properties.source_page);
           const sourceHint = docName ? `${docName}${typeof page === "number" ? ` · p.${page}` : ""}` : "";
           return sourceHint
             ? `${resolveNodeDisplayName(node)} (${node.label})\n${sourceHint}`
@@ -434,8 +475,9 @@ export default function SemanticGraphViewer() {
           link.properties?.edge_scope === "bridged" ? "rgba(251, 191, 36, 0.35)" : "rgba(148, 163, 184, 0.35)"
         }
         linkWidth={(link: GraphEdge) => {
-          const source = typeof link.source === "string" ? link.source : link.source.id;
-          const target = typeof link.target === "string" ? link.target : link.target.id;
+          const source = getNodeId(link.source);
+          const target = getNodeId(link.target);
+          if (!source || !target) return 0.4;
           if (source === primaryFocusNodeId || target === primaryFocusNodeId) return 1.6;
           if (source === selectedNodeId || target === selectedNodeId) return 1.3;
           if (link.properties?.edge_scope === "bridged") return 0.45;

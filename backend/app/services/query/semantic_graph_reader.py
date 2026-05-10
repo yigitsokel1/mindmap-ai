@@ -58,16 +58,23 @@ class SemanticGraphReader:
     def read_graph(self, filters: SemanticGraphFilters, limit: int = 2500) -> GraphResponse:
         included_labels = self._resolve_labels(filters)
         self._warn_if_legacy_document_scope(filters.document_id)
+        effective_document_id = filters.document_id
+        if filters.document_id and self._is_single_document_graph(filters.document_id):
+            # If only one document exists in graph, scoped and global views should match.
+            effective_document_id = None
         self.logger.info(
             "graph_reader.start document_id=%s node_types=%s effective_labels=%s include_structural=%s include_evidence=%s include_citations=%s",
-            filters.document_id,
+            effective_document_id,
             filters.node_types,
             sorted(included_labels),
             filters.include_structural,
             filters.include_evidence,
             filters.include_citations,
         )
-        records = self._load_nodes(included_labels, filters.document_id, limit)
+        if effective_document_id:
+            records = self._load_nodes_for_document(included_labels, effective_document_id, limit)
+        else:
+            records = self._load_nodes_global(included_labels, limit)
         node_by_id: Dict[str, GraphNode] = {}
         node_ids: List[str] = []
         for record in records:
@@ -81,7 +88,8 @@ class SemanticGraphReader:
             node_by_id[node_id] = model
             node_ids.append(node_id)
 
-        in_scope_node_ids = self._load_in_scope_node_ids(node_ids, filters.document_id)
+        # Document-scoped node query is already anchored from the selected document.
+        in_scope_node_ids = set(node_ids) if effective_document_id else self._load_in_scope_node_ids(node_ids, None)
         edges = self._load_edges(node_ids, in_scope_node_ids=in_scope_node_ids)
         in_scope_edge_count = sum(1 for edge in edges if edge.properties.get("edge_scope") == "in_scope")
         bridged_edge_count = sum(1 for edge in edges if edge.properties.get("edge_scope") == "bridged")
@@ -91,8 +99,8 @@ class SemanticGraphReader:
                 filters.document_id,
                 len(node_ids),
             )
-        if filters.document_id and not node_ids:
-            self.logger.warning("graph_reader.empty_for_document_scope document_id=%s", filters.document_id)
+        if effective_document_id and not node_ids:
+            self.logger.warning("graph_reader.empty_for_document_scope document_id=%s", effective_document_id)
         return GraphResponse(
             nodes=list(node_by_id.values()),
             edges=edges,
@@ -100,20 +108,39 @@ class SemanticGraphReader:
                 counts={
                     "nodes": len(node_by_id),
                     "edges": len(edges),
-                    "in_scope_nodes": len(in_scope_node_ids) if filters.document_id else len(node_by_id),
-                    "in_scope_edges": in_scope_edge_count if filters.document_id else len(edges),
-                    "bridged_edges": bridged_edge_count if filters.document_id else 0,
+                    "in_scope_nodes": len(in_scope_node_ids) if effective_document_id else len(node_by_id),
+                    "in_scope_edges": in_scope_edge_count if effective_document_id else len(edges),
+                    "bridged_edges": bridged_edge_count if effective_document_id else 0,
                 },
                 filters_applied={
-                    "document_id": filters.document_id,
+                    "document_id": effective_document_id,
                     "node_types": filters.node_types,
                     "include_structural": filters.include_structural,
                     "include_evidence": filters.include_evidence,
                     "include_citations": filters.include_citations,
                     "effective_node_types": sorted(included_labels),
+                    "single_document_scope_bypassed": bool(filters.document_id and effective_document_id is None),
                 },
             ),
         )
+
+    def _is_single_document_graph(self, document_id: str) -> bool:
+        query = """
+        MATCH (d:Document)
+        RETURN count(DISTINCT d) AS total, collect(DISTINCT d.uid) AS uids
+        """
+        records, _, _ = self.db.driver.execute_query(  # type: ignore[union-attr]
+            query,
+            {},
+        )
+        if not records:
+            return False
+        record = records[0]
+        total = int(record.get("total") or 0)
+        if total != 1:
+            return False
+        uids = [str(uid) for uid in (record.get("uids") or []) if uid]
+        return len(uids) == 1 and uids[0] == document_id
 
     def read_node_detail(self, node_id: str, document_id: Optional[str] = None) -> Optional[NodeDetail]:
         node_record = self._load_node_by_id(node_id)
@@ -307,24 +334,35 @@ class SemanticGraphReader:
                 labels &= requested
         return labels
 
-    def _load_nodes(self, labels: Iterable[str], document_id: Optional[str], limit: int) -> List[Dict[str, Any]]:
+    def _load_nodes_global(self, labels: Iterable[str], limit: int) -> List[Dict[str, Any]]:
         query = """
         MATCH (n)
         WHERE any(label IN labels(n) WHERE label IN $labels)
-          AND (
-            $document_id IS NULL
-            OR any(key IN ['uid', 'id', 'document_id', 'doc_id', 'source_document_id'] WHERE n[key] = $document_id)
-            OR EXISTS {
-              MATCH (n)-[*1..4]-(d:Document)
-              WHERE d.uid = $document_id
-                 OR ($allow_legacy_element_id AND elementId(d) = $document_id)
-            }
-            OR EXISTS {
-              MATCH (n)-[:INSTANCE_OF_CANONICAL]->(:CanonicalEntity)<-[:INSTANCE_OF_CANONICAL]-(peer)-[*1..4]-(d:Document)
-              WHERE d.uid = $document_id
-                 OR ($allow_legacy_element_id AND elementId(d) = $document_id)
-            }
-          )
+        RETURN DISTINCT n
+        LIMIT $limit
+        """
+        records, _, _ = self.db.driver.execute_query(  # type: ignore[union-attr]
+            query,
+            {
+                "labels": list(labels),
+                "limit": limit,
+            },
+        )
+        self.logger.info(
+            "graph_reader.nodes_loaded_global labels=%d count=%d limit=%d",
+            len(list(labels)),
+            len(records),
+            limit,
+        )
+        return records
+
+    def _load_nodes_for_document(self, labels: Iterable[str], document_id: str, limit: int) -> List[Dict[str, Any]]:
+        query = """
+        MATCH (d:Document)
+        WHERE d.uid = $document_id
+           OR ($allow_legacy_element_id AND elementId(d) = $document_id)
+        MATCH (d)-[*0..8]-(n)
+        WHERE any(label IN labels(n) WHERE label IN $labels)
         RETURN DISTINCT n
         LIMIT $limit
         """
@@ -339,7 +377,7 @@ class SemanticGraphReader:
             },
         )
         self.logger.info(
-            "graph_reader.nodes_loaded document_id=%s labels=%d count=%d limit=%d",
+            "graph_reader.nodes_loaded_document_scope document_id=%s labels=%d count=%d limit=%d",
             document_id,
             len(list(labels)),
             len(records),
@@ -367,11 +405,9 @@ class SemanticGraphReader:
             return []
 
         query = """
-        UNWIND $node_ids AS source_id
-        MATCH (a)
-        WHERE elementId(a) = source_id
         MATCH (a)-[r]->(b)
-        WHERE elementId(b) IN $node_ids
+        WHERE elementId(a) IN $node_ids
+          AND elementId(b) IN $node_ids
         RETURN DISTINCT a, r, b
         LIMIT 10000
         """
@@ -518,15 +554,15 @@ class SemanticGraphReader:
                     document_id=str(document.get("uid") or "") if document is not None else "",
                     document_name=(
                         str(
-                            document.get("title")
-                            or document.get("saved_file_name")
+                            document.get("saved_file_name")
                             or document.get("file_name")
+                            or document.get("title")
                             or ""
                         )
                         if document is not None
                         else None
                     ),
-                    page=self._safe_int(passage.get("page_number")) if passage is not None else None,
+                    page=self._to_ui_page(self._safe_int(passage.get("page_number"))) if passage is not None else None,
                     section=str(section.get("title") or section.get("name") or "") if section is not None else None,
                     score=self._safe_float(evidence.get("confidence") if evidence is not None else None),
                 )
@@ -545,7 +581,7 @@ class SemanticGraphReader:
           AND (
             any(key IN ['uid', 'id', 'document_id', 'doc_id', 'source_document_id'] WHERE n[key] = $document_id)
             OR EXISTS {
-              MATCH (n)-[*1..4]-(d:Document)
+              MATCH (n)-[*1..8]-(d:Document)
               WHERE d.uid = $document_id
                  OR ($allow_legacy_element_id AND elementId(d) = $document_id)
             }
@@ -709,6 +745,13 @@ class SemanticGraphReader:
             return int(value) if value is not None else None
         except (TypeError, ValueError):
             return None
+
+    @staticmethod
+    def _to_ui_page(page: Optional[int]) -> Optional[int]:
+        if page is None:
+            return None
+        # Stored page numbers are zero-based in ingestion pipeline.
+        return page + 1 if page >= 0 else page
 
     @staticmethod
     def _group_relations(relations: List[NodeRelationItem]) -> List[NodeRelationGroup]:

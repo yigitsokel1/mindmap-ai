@@ -214,10 +214,10 @@ class SemanticQueryReader:
                 page = None
                 if passage is not None:
                     snippet = str(passage.get("text", "") or "")[:360]
-                    page = self._safe_int(passage.get("page_number"))
+                    page = self._to_ui_page(self._safe_int(passage.get("page_number")))
                 elif evidence is not None:
                     snippet = str(evidence.get("text", "") or evidence.get("statement", ""))[:360]
-                    page = self._safe_int(evidence.get("page_number"))
+                    page = self._to_ui_page(self._safe_int(evidence.get("page_number")))
 
                 evidence_items.append(
                     SemanticEvidenceItem(
@@ -374,12 +374,19 @@ class SemanticQueryReader:
         if not document:
             return None
         name = (
-            document.get("title")
-            or document.get("saved_file_name")
+            document.get("saved_file_name")
             or document.get("file_name")
+            or document.get("title")
             or document.get("name")
         )
         return str(name) if name else None
+
+    @staticmethod
+    def _to_ui_page(page: Optional[int]) -> Optional[int]:
+        if page is None:
+            return None
+        # Stored page numbers are zero-based in extraction pipeline.
+        return page + 1 if page >= 0 else page
 
     @staticmethod
     def _pick_citation_label(inline_citation: Any, reference_entry: Any) -> Optional[str]:

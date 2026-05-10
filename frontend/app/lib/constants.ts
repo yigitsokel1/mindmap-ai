@@ -21,7 +21,8 @@ export const API_ENDPOINTS = {
   QUERY_SEMANTIC: apiUrl("/api/query/semantic"),
   INGEST: apiUrl("/api/ingest"),
   INGEST_STATUS: (jobId: string) => apiUrl(`/api/ingest/${encodeURIComponent(jobId)}`),
-  STATIC: (filename: string) => apiUrl(`/static/${encodeURIComponent(filename)}`),
+  // Keep PDF fetch same-origin via Next rewrite to avoid webview/CORS/range issues.
+  STATIC: (filename: string) => `/static/${encodeURIComponent(filename)}`,
 } as const;
 
 export const CORE_SEMANTIC_NODE_TYPES: SemanticNodeType[] = [
@@ -36,10 +37,9 @@ export const CORE_SEMANTIC_NODE_TYPES: SemanticNodeType[] = [
 ];
 
 export const DEFAULT_SEMANTIC_FILTERS: GraphFilters = {
-  include_structural: false,
-  include_evidence: false,
-  include_citations: false,
-  node_types: [...CORE_SEMANTIC_NODE_TYPES],
+  include_structural: true,
+  include_evidence: true,
+  include_citations: true,
 };
 
 export const GRAPH_LIMITS = {

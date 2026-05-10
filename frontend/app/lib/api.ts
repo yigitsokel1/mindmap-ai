@@ -60,6 +60,8 @@ const inFlightGraphRequests = new Map<string, Promise<GraphResponse>>();
 const graphResponseCache = new Map<string, { expiresAt: number; data: GraphResponse }>();
 const GRAPH_RESPONSE_TTL_MS = 5000;
 const DEFAULT_TIMEOUT_MS = 12000;
+const GRAPH_TIMEOUT_MS = 30000;
+const GRAPH_RETRY_TIMEOUT_MS = 45000;
 
 export type AppErrorType = "network" | "timeout" | "server" | "not_found" | "validation" | "partial_data" | "unknown";
 
@@ -161,7 +163,22 @@ export async function fetchSemanticGraph(
         filters: effectiveFilters,
       });
     }
-    const data = await fetchJson<GraphResponse>(url, undefined, DEFAULT_TIMEOUT_MS);
+    let data: GraphResponse;
+    try {
+      data = await fetchJson<GraphResponse>(url, undefined, GRAPH_TIMEOUT_MS);
+    } catch (error) {
+      const isTimeout = error instanceof AppError && error.type === "timeout";
+      if (!isTimeout) {
+        throw error;
+      }
+      if (options.traceLabel) {
+        console.warn(`[graph-trace:${options.traceLabel}] fetch-timeout-retry`, {
+          filters: effectiveFilters,
+          timeoutMs: GRAPH_TIMEOUT_MS,
+        });
+      }
+      data = await fetchJson<GraphResponse>(url, undefined, GRAPH_RETRY_TIMEOUT_MS);
+    }
     if (options.traceLabel) {
       console.debug(`[graph-trace:${options.traceLabel}] fetch-success`, {
         filters: effectiveFilters,

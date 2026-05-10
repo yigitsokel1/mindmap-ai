@@ -41,15 +41,14 @@ let cachedDocuments: Document[] | null = null;
 export default function FileLibrary() {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isUploading, setIsUploading] = useState(false);
-  const [isServerProcessing, setIsServerProcessing] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [ingestMessage, setIngestMessage] = useState<string | null>(null);
-  const [uploadError, setUploadError] = useState<string | null>(null);
+  const uploadUiState = useAppStore((state) => state.uploadUiState);
+  const setUploadUiState = useAppStore((state) => state.setUploadUiState);
+  const resetUploadUiState = useAppStore((state) => state.resetUploadUiState);
   const openPDFViewer = useAppStore((state) => state.openPDFViewer);
   const setSelectedDocumentId = useAppStore((state) => state.setSelectedDocumentId);
   const selectedDocumentId = useAppStore((state) => state.selectedDocumentId);
   const requestGraphRefresh = useAppStore((state) => state.requestGraphRefresh);
+  const { isUploading, isServerProcessing, uploadProgress, ingestMessage, uploadError } = uploadUiState;
 
   const refreshDocuments = async () => {
     const data = await fetchSemanticGraph(
@@ -126,11 +125,13 @@ export default function FileLibrary() {
       return;
     }
 
-    setIsUploading(true);
-    setIsServerProcessing(false);
-    setUploadProgress(0);
-    setIngestMessage(INGEST_STAGE_LABELS.uploaded);
-    setUploadError(null);
+    setUploadUiState({
+      isUploading: true,
+      isServerProcessing: false,
+      uploadProgress: 0,
+      ingestMessage: INGEST_STAGE_LABELS.uploaded,
+      uploadError: null,
+    });
 
     try {
       const formData = new FormData();
@@ -141,13 +142,15 @@ export default function FileLibrary() {
       xhr.upload.addEventListener("progress", (e) => {
         if (e.lengthComputable) {
           const percentComplete = (e.loaded / e.total) * 100;
-          setUploadProgress(percentComplete);
+          setUploadUiState({ uploadProgress: percentComplete });
         }
       });
       xhr.upload.addEventListener("load", () => {
-        setUploadProgress(100);
-        setIsServerProcessing(true);
-        setIngestMessage(INGEST_STAGE_LABELS.parsing);
+        setUploadUiState({
+          uploadProgress: 100,
+          isServerProcessing: true,
+          ingestMessage: INGEST_STAGE_LABELS.parsing,
+        });
       });
 
       xhr.addEventListener("load", async () => {
@@ -182,56 +185,76 @@ export default function FileLibrary() {
 
           await refreshDocuments();
 
-          setUploadProgress(100);
-          setIngestMessage(INGEST_STAGE_LABELS.completed);
+          setUploadUiState({
+            uploadProgress: 100,
+            ingestMessage: INGEST_STAGE_LABELS.completed,
+          });
         } catch (error) {
           console.error("Upload response handling error:", error);
-          setUploadError("Upload completed but response parsing failed. Document list refreshed.");
+          setUploadUiState({
+            uploadError: "Upload completed but response parsing failed. Document list refreshed.",
+          });
           await refreshDocuments();
         } finally {
           setTimeout(() => {
-            setIsUploading(false);
-            setIsServerProcessing(false);
-            setUploadProgress(0);
-            setIngestMessage(null);
+            resetUploadUiState();
           }, 500);
         }
       });
 
       xhr.addEventListener("error", () => {
         console.error("Upload failed due to network error.");
-        setUploadError("Upload failed due to network error.");
-        setIsUploading(false);
-        setIsServerProcessing(false);
-        setUploadProgress(0);
-        setIngestMessage(INGEST_STAGE_LABELS.failed);
+        setUploadUiState({
+          uploadError: "Upload failed due to network error.",
+          isUploading: false,
+          isServerProcessing: false,
+          uploadProgress: 0,
+          ingestMessage: INGEST_STAGE_LABELS.failed,
+        });
       });
 
       xhr.open("POST", API_ENDPOINTS.INGEST);
       xhr.send(formData);
     } catch (error) {
       console.error("Upload error:", error);
-      setUploadError(toUserMessage(error));
-      setIsUploading(false);
-      setIsServerProcessing(false);
-      setUploadProgress(0);
-      setIngestMessage(INGEST_STAGE_LABELS.failed);
+      setUploadUiState({
+        uploadError: toUserMessage(error),
+        isUploading: false,
+        isServerProcessing: false,
+        uploadProgress: 0,
+        ingestMessage: INGEST_STAGE_LABELS.failed,
+      });
     }
+  };
+
+  const resolveIngestMessage = (status: IngestJobStatus): string => {
+    const knownStage = INGEST_STAGE_LABELS[status.stage as keyof typeof INGEST_STAGE_LABELS];
+    const subphase = typeof status.details?.subphase === "string" ? status.details.subphase : undefined;
+    if (status.stage === "writing_graph" && subphase) {
+      return `Writing graph (${subphase})`;
+    }
+    if (knownStage && subphase) {
+      return `${knownStage} (${subphase})`;
+    }
+    if (knownStage) {
+      return knownStage;
+    }
+    if (subphase) {
+      return `Processing (${subphase})`;
+    }
+    return "Processing on server";
   };
 
   const pollIngestJob = async (jobId: string) => {
     let lastStageOrder = INGEST_STAGE_ORDER.uploaded;
     for (let attempt = 0; attempt < 120; attempt += 1) {
       const status = await fetchJson<IngestJobStatus>(API_ENDPOINTS.INGEST_STATUS(jobId), undefined, 12000);
-      const currentOrder = INGEST_STAGE_ORDER[status.stage];
-      if (currentOrder >= lastStageOrder) {
-        const subphase = typeof status.details?.subphase === "string" ? status.details.subphase : undefined;
-        if (status.stage === "writing_graph" && subphase) {
-          setIngestMessage(`Writing graph (${subphase})`);
-        } else {
-          setIngestMessage(INGEST_STAGE_LABELS[status.stage]);
-        }
+      const currentOrder = INGEST_STAGE_ORDER[status.stage as keyof typeof INGEST_STAGE_ORDER];
+      if (typeof currentOrder === "number" && currentOrder >= lastStageOrder) {
+        setUploadUiState({ ingestMessage: resolveIngestMessage(status) });
         lastStageOrder = currentOrder;
+      } else if (typeof currentOrder !== "number") {
+        setUploadUiState({ ingestMessage: resolveIngestMessage(status) });
       }
 
       if (status.status === "completed") {
@@ -255,28 +278,33 @@ export default function FileLibrary() {
 
   const resolveOpenablePdf = async (doc: Document): Promise<string | null> => {
     const candidates = Array.from(new Set([doc.name, doc.fallback_name].filter(Boolean))) as string[];
+    let fallbackUrl: string | null = null;
     for (const candidate of candidates) {
       const candidateUrl = API_ENDPOINTS.STATIC(candidate);
+      if (!fallbackUrl) {
+        fallbackUrl = candidateUrl;
+      }
       try {
         const probe = await fetch(candidateUrl, { method: "HEAD" });
         if (probe.ok) {
           return candidateUrl;
         }
       } catch {
-        // Try the next candidate filename.
+        // Probe may fail transiently; continue and keep fallback URL.
       }
     }
-    return null;
+    // If probing failed but we still have a deterministic static filename, try opening it directly.
+    return fallbackUrl;
   };
 
   const handleOpenDocument = async (doc: Document) => {
     if (!doc.name && !doc.fallback_name) {
-      setUploadError("This document does not have a downloadable file name.");
+      setUploadUiState({ uploadError: "This document does not have a downloadable file name." });
       return;
     }
     const pdfUrl = await resolveOpenablePdf(doc);
     if (!pdfUrl) {
-      setUploadError("PDF file was not found on static storage for this document.");
+      setUploadUiState({ uploadError: "PDF file was not found on static storage for this document." });
       return;
     }
     setSelectedDocumentId(doc.document_uid || null);

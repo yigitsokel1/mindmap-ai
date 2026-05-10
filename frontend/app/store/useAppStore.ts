@@ -43,6 +43,13 @@ interface AppState {
 
   // Document/filter state
   selectedDocumentId: string | null;
+  uploadUiState: {
+    isUploading: boolean;
+    isServerProcessing: boolean;
+    uploadProgress: number;
+    ingestMessage: string | null;
+    uploadError: string | null;
+  };
 
   // Inspector actions
   openPDFViewer: (url: string, docName: string, page: number, snippet?: string | null) => void;
@@ -64,6 +71,16 @@ interface AppState {
 
   // Document/filter actions
   setSelectedDocumentId: (documentId: string | null) => void;
+  setUploadUiState: (
+    patch: Partial<{
+      isUploading: boolean;
+      isServerProcessing: boolean;
+      uploadProgress: number;
+      ingestMessage: string | null;
+      uploadError: string | null;
+    }>
+  ) => void;
+  resetUploadUiState: () => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -86,6 +103,13 @@ export const useAppStore = create<AppState>((set) => ({
   graphRefreshToken: 0,
   graphFocusRelevantOnly: false,
   selectedDocumentId: null,
+  uploadUiState: {
+    isUploading: false,
+    isServerProcessing: false,
+    uploadProgress: 0,
+    ingestMessage: null,
+    uploadError: null,
+  },
   
   // Actions
   toggleCommandCenter: () => set((state) => ({ isCommandCenterOpen: !state.isCommandCenterOpen })),
@@ -157,4 +181,21 @@ export const useAppStore = create<AppState>((set) => ({
     })),
   setGraphFocusRelevantOnly: (enabled: boolean) => set({ graphFocusRelevantOnly: enabled }),
   setSelectedNodeContext: (context: NodeContext | null) => set({ selectedNodeContext: context }),
+  setUploadUiState: (patch) =>
+    set((state) => ({
+      uploadUiState: {
+        ...state.uploadUiState,
+        ...patch,
+      },
+    })),
+  resetUploadUiState: () =>
+    set({
+      uploadUiState: {
+        isUploading: false,
+        isServerProcessing: false,
+        uploadProgress: 0,
+        ingestMessage: null,
+        uploadError: null,
+      },
+    }),
 }));
