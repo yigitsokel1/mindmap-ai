@@ -1,0 +1,91 @@
+{
+  "answer": "Transformer is grounded through self-attention evidence in the Methods section, with supporting relation instances linked to canonical entities and source passages.",
+  "query_intent": "METHOD_USAGE",
+  "matched_entities": [
+    { "id": "n-transformer", "type": "Method", "display_name": "Transformer" },
+    { "id": "n-attention", "type": "Concept", "display_name": "Self-Attention" }
+  ],
+  "evidence": [
+    {
+      "relation_type": "USES",
+      "page": 3,
+      "snippet": "The Transformer relies on multi-head self-attention to model token dependencies without recurrence.",
+      "section": "Methods",
+      "confidence": 0.92,
+      "related_node_ids": ["n-transformer", "ri-1"],
+      "document_id": "doc-transformer",
+      "document_name": "attention_is_all_you_need.pdf",
+      "citation_label": "[12]",
+      "reference_entry_id": "ref-12"
+    },
+    {
+      "relation_type": "IMPLEMENTS",
+      "page": 4,
+      "snippet": "Encoder-decoder stacks use stacked attention layers with residual connections.",
+      "section": "Architecture",
+      "confidence": 0.88,
+      "related_node_ids": ["n-transformer", "ri-2"],
+      "document_id": "doc-transformer",
+      "document_name": "attention_is_all_you_need.pdf",
+      "citation_label": "[13]",
+      "reference_entry_id": "ref-13"
+    }
+  ],
+  "related_nodes": [
+    { "id": "n-transformer", "type": "Method", "display_name": "Transformer" },
+    { "id": "n-attention", "type": "Concept", "display_name": "Self-Attention" }
+  ],
+  "primary_focus_node_id": "n-transformer",
+  "secondary_focus_node_ids": ["ri-1", "ri-2"],
+  "focus_seed_ids": ["n-transformer", "ri-1", "ri-2"],
+  "citations": [
+    {
+      "label": "[12]",
+      "reference_entry_id": "ref-12",
+      "page": 3,
+      "document_name": "attention_is_all_you_need.pdf"
+    },
+    {
+      "label": "[13]",
+      "reference_entry_id": "ref-13",
+      "page": 4,
+      "document_name": "attention_is_all_you_need.pdf"
+    }
+  ],
+  "explanation": {
+    "why_these_entities": ["Matched Transformer and Self-Attention from the question intent."],
+    "why_this_evidence": ["Ranked passages from Methods and Architecture with citation signals."],
+    "reasoning_path": ["question_intent:METHOD_USAGE", "evidence_ranker:section_methods"],
+    "selected_sections": ["Methods", "Architecture"],
+    "selection_signals": ["citation_signal_weighted_by_intent", "relation_type_match"]
+  },
+  "key_points": [
+    "Self-attention is the core grounding mechanism for Transformer.",
+    "Evidence clusters align with Methods section passages."
+  ],
+  "insights": [
+    {
+      "type": "COMMON_PATTERN",
+      "text": "Attention-based grounding appears consistently across supporting passages.",
+      "confidence": 0.9,
+      "supporting_clusters": ["c-transformer"]
+    }
+  ],
+  "clusters": [
+    {
+      "cluster_key": "c-transformer",
+      "entity": "Transformer",
+      "relation_type": "USES",
+      "evidences": [],
+      "canonical_frequency": 2,
+      "citation_count": 2,
+      "importance": 0.86
+    }
+  ],
+  "confidence": 0.84,
+  "confidence_badge": "GROUNDED",
+  "limited_evidence": false,
+  "uncertainty_signal": false,
+  "uncertainty_reason": null,
+  "mode": "semantic_grounded"
+}

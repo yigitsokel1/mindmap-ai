@@ -6,18 +6,60 @@
 ![Next.js](https://img.shields.io/badge/Next.js-000000?style=for-the-badge&logo=nextdotjs&logoColor=white)
 ![Three.js](https://img.shields.io/badge/Three.js-000000?style=for-the-badge&logo=threedotjs&logoColor=white)
 
-Upload academic PDFs, explore their knowledge as a 3D semantic graph, and get evidence-backed answers grounded in the document graph — not hallucinated summaries.
+Upload academic PDFs, explore their knowledge as a 3D semantic graph, and ask evidence-backed questions grounded in extracted entities, relations, and source passages.
 
 **Live demo:** [https://mindmap-ai.osmanyigitsokel.com](https://mindmap-ai.osmanyigitsokel.com)
 
 ---
 
+## Preview
+
+![MindMap-AI graph view](./docs/assets/mindmap-graph-view.png)
+
+![MindMap-AI query evidence view](./docs/assets/mindmap-query-evidence.png)
+
+![MindMap-AI PDF citation view](./docs/assets/mindmap-pdf-view.png)
+
+---
+
+## Why this exists
+
+Academic PDFs often contain dense relationships between methods, datasets, concepts, authors, and claims.
+
+Traditional PDF readers show pages. Chat-based summarizers often flatten the document into a single answer.
+
+MindMap-AI explores a graph-first reading workflow: extract structured knowledge from a PDF, preserve evidence, and let the user inspect the document as a semantic graph.
+
+---
+
 ## What It Does
+
+MindMap-AI turns a PDF into an inspectable graph-based reading environment:
 
 1. **Ingest** — Upload a PDF. The pipeline parses it, extracts typed entities and relations via LLM, normalizes them to a canonical graph, and persists everything to Neo4j.
 2. **Explore** — An interactive 3D force-graph renders the knowledge graph. Nodes are entities (Method, Concept, Dataset, Author…); edges are typed relations. Click a node to inspect its evidence, citations, and canonical links.
 3. **Query** — Ask a question. The semantic query pipeline traverses the graph, collects evidence passages, ranks them, and composes a grounded answer with citation chips and PDF page jumps.
 4. **Read** — Click a citation to open the source PDF at the exact page, with the relevant passage highlighted.
+
+---
+
+## Engineering notes
+
+- The project models document understanding as a graph problem instead of a flat summary problem.
+- Extracted relations are reified as first-class nodes to preserve provenance and evidence.
+- Query answering traverses the graph and ranks evidence before composing an answer.
+- The active semantic path is graph-based; embeddings are not used in the active query path.
+- The deployment is designed as a portfolio/research demo, not a hardened multi-tenant SaaS system.
+
+---
+
+## Limitations
+
+- Extraction quality depends on PDF structure, OCR quality, and document complexity.
+- The graph is generated from model-assisted extraction and may require human review for critical use.
+- The live demo is intended for portfolio/research usage, not production document management.
+- PDF storage currently uses a demo static access model.
+- Large documents may require stricter rate limits, queueing, and storage isolation in production.
 
 ---
 
@@ -149,6 +191,8 @@ poetry run python backend/tools/run_semantic_eval.py
 | Hallucination rate | 0% |
 | Evidence presence | 74% |
 | Insight presence | 89% |
+
+Semantic eval metrics are measured on deterministic project fixtures, not a broad external benchmark.
 
 ---
 
