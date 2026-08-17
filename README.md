@@ -8,8 +8,6 @@
 
 Upload academic PDFs, explore their knowledge as a 3D semantic graph, and ask evidence-backed questions grounded in extracted entities, relations, and source passages.
 
-**Live demo:** [https://mindmap-ai.osmanyigitsokel.com](https://mindmap-ai.osmanyigitsokel.com)
-
 ---
 
 ## Preview
